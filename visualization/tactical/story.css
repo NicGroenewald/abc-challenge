@@ -1,52 +1,30 @@
-/* Story site.
- *
- * The page opens as the story (html.story, set by the boot script in index.html). The viewer's own panels are all position:fixed
- * on a page that cannot scroll, so in story mode they are switched off here and only <main id="story"> shows.
- * ?explore=1 (or ?side=data) opens the viewer exactly as before, without this class.
- *
- * Two layers:
- *   - sections 1 to 7 are a plain article: it needs no JavaScript and nothing moves;
- *   - section 8, under html.st-motion (set by story.js), pins the three decks (task, model, results) and stacks their panels in 3D.
- * Sizes are in px, not rem: the viewer sets the root font size to 14px. Panel sizes in motion mode come from the window (--pw).
- */
 
-/* ---------------------------------------------------------------- 1. story mode on / off */
 html:not(.story) #story { display:none; }
 html.story, html.story body { height:auto; min-height:100%; overflow:visible; }
-html.story body > :not(#story) { display:none !important; }          /* the viewer's panels, its 3D scene, its loading note */
-/* no smooth scrolling: every jump the story makes is instant (SPEC C7). A jump to a step or a focused element stops 72 px below the
-   top so the top bar does not cover it. Ticket 09: this is a scroll-margin on the content, not a scroll-padding on the page, because
-   with scroll-padding the browser counted the sticky top bar's own links as covered, and every Tab onto one scrolled the story
-   back about half a window. */
+html.story body > :not(#story) { display:none !important; }
 html.story #story :not(.st-top, .st-top *) { scroll-margin-top:72px; }
 
-/* ---------------------------------------------------------------- 2. theme tokens (after scale.com: SPEC section F)
- * Black page, quiet grey type at regular weight, one mono for labels and numbers, hairlines, ONE accent (the colour of
- * "prediction" and of active states), a dark green primary button, amber only for the scored sample.
- * The tokens are set on #story, so they reach the story only: the viewer keeps its own colours and Fira.
- * Contrast on #000 (WCAG): --ink 16.6:1, --body 8.3:1, --quiet 5.3:1, --blue 9.0:1, --line-hi (meaningful lines) 3.5:1.
- * Fonts: Geist and Geist Mono, variable weight, self-hosted in fonts/ (SIL Open Font Licence 1.1, fonts/LICENSE-*.txt). */
 @font-face { font-family:'Geist'; font-weight:100 900; font-style:normal; font-display:swap; src:url('fonts/geist-latin-wght-normal.woff2') format('woff2'); }
 @font-face { font-family:'Geist Mono'; font-weight:100 900; font-style:normal; font-display:swap; src:url('fonts/geist-mono-latin-wght-normal.woff2') format('woff2'); }
 html.story, html.story body { background:#000; }
 #story {
-  --bg:#000;                /* the page */
-  --glass:10,10,10;         /* a card's fill, as r,g,b (its opacity is set where it is used) */
-  --ink:#eaeaea;            /* headlines and figures */
-  --body:#a6a6a6;           /* running text */
-  --quiet:#808080;          /* labels, captions, tags */
-  --rule:#1c1c1c;           /* hairlines between sections */
-  --line:#2c2c2c;           /* quiet outlines (buttons, cards) */
-  --line-hi:#6b6b6b;        /* outlines that carry meaning */
-  --blue:#84b2ff;           /* THE accent: prediction, the model, active states (the name is kept from the viewer's palette) */
-  --amber:#f0b24a;          /* only the scored sample */
-  --go:#193a29;             /* the primary button, as on the reference */
+  --bg:#000;
+  --glass:10,10,10;
+  --ink:#eaeaea;
+  --body:#a6a6a6;
+  --quiet:#808080;
+  --rule:#1c1c1c;
+  --line:#2c2c2c;
+  --line-hi:#6b6b6b;
+  --blue:#84b2ff;
+  --amber:#f0b24a;
+  --go:#193a29;
   --go-hi:#215038;
   --go-ink:#dcebe1;
-  --col:1120px;             /* the widest a section's content gets */
-  --text:600px;             /* the widest a paragraph gets (about 68 characters) */
-  --gap:clamp(96px, 16vh, 184px);   /* space above and below a section */
-  --bar:64px;               /* height of the top bar; pinned stages stick just below it */
+  --col:1120px;
+  --text:600px;
+  --gap:clamp(96px, 16vh, 184px);
+  --bar:64px;
   --sans:"Geist","Fira Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"Geist Mono","Fira Code",ui-monospace,SFMono-Regular,Menlo,monospace;
   display:block; background:var(--bg); color:var(--body); font-family:var(--sans); font-size:clamp(15px, 1.15vw, 20px); line-height:1.6; font-weight:400;
@@ -59,7 +37,6 @@ html.story, html.story body { background:#000; }
 #story .num, #story .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
 #story ::selection { background:rgba(132,178,255,.28); }
 
-/* ---------------------------------------------------------------- 3. the top bar: project name and chapter links */
 .st-top { position:sticky; top:0; z-index:5; height:var(--bar); display:flex; align-items:center; justify-content:space-between; gap:24px;
   padding:0 clamp(20px, 4vw, 48px); background:rgba(0,0,0,.72); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-bottom:1px solid var(--rule); }
 .st-top .st-name { color:var(--ink); font-weight:500; font-size:14px; letter-spacing:-.005em; text-decoration:none; white-space:nowrap; }
@@ -68,13 +45,22 @@ html.story, html.story body { background:#000; }
 .st-top nav a:hover { color:var(--ink); }
 .st-top nav a.st-cta { color:var(--go-ink); background:var(--go); border:1px solid #24523a; border-radius:6px; padding:8px 14px; transition:background .15s; }
 .st-top nav a.st-cta:hover { background:var(--go-hi); color:#fff; }
-@media (max-width: 760px) { .st-top nav a:not(.st-cta) { display:none; } }
+.st-chap { display:contents; }
+.st-menu { display:none; }
+@media (max-width: 760px) {
+  .st-top .st-menu { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; min-height:0; padding:0; margin-right:-4px;
+    color:var(--quiet); background:none; border:0; border-radius:6px; cursor:pointer; }
+  .st-top .st-menu[aria-expanded="true"] { color:var(--ink); background:rgba(255,255,255,.07); }
+  .st-chap { display:none; position:absolute; top:100%; right:clamp(20px, 4vw, 48px); min-width:200px; flex-direction:column; padding:6px 0;
+    background:var(--bg); border:1px solid var(--line); border-top:0; border-radius:0 0 8px 8px; }
+  .st-top.is-chap .st-chap { display:flex; }
+  .st-top nav .st-chap a { display:flex; align-items:center; min-height:48px; padding:0 20px; font-size:15px; color:var(--body); }
+}
 
-/* ---------------------------------------------------------------- 4. sections and type */
 .st-sec { max-width:var(--col); margin:0 auto; padding:var(--gap) clamp(20px, 4vw, 48px); }
 .st-sec + .st-sec { border-top:1px solid var(--rule); }
 .st-kicker { display:flex; align-items:center; gap:10px; margin:0 0 22px; font:400 clamp(11px, .8vw, 13.5px)/1.2 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--quiet); }
-.st-kicker::before { content:""; flex:none; width:7px; height:7px; background:var(--quiet); clip-path:polygon(0 0, 100% 0, 100% 100%); }   /* the small corner mark */
+.st-kicker::before { content:""; flex:none; width:7px; height:7px; background:var(--quiet); clip-path:polygon(0 0, 100% 0, 100% 100%); }
 #story h1, #story h2 { margin:0; color:var(--ink); font-weight:400; letter-spacing:-.03em; line-height:1.06; text-wrap:balance; }
 #story h1 { font-size:clamp(40px, 5vw, 104px); }
 #story h2 { font-size:clamp(30px, 3.3vw, 68px); letter-spacing:-.025em; max-width:20ch; }
@@ -85,7 +71,6 @@ html.story, html.story body { background:#000; }
 .st-fig { margin:clamp(40px, 7vh, 72px) 0 0; }
 .st-fig figcaption { max-width:var(--text); margin-top:14px; font-size:14.5px; line-height:1.55; color:var(--quiet); }
 
-/* ---------------------------------------------------------------- 5. the deck as a plain article: one step under the next, text beside its panel */
 .dk-track { max-width:1360px; margin:0 auto; padding:0 clamp(20px, 4vw, 48px); }
 .dk-rail { display:none; }
 .dk-step { display:grid; grid-template-columns:minmax(0, 5fr) minmax(0, 8fr); gap:clamp(24px, 5vw, 72px); align-items:center; padding:clamp(48px, 9vh, 104px) 0; }
@@ -100,8 +85,6 @@ html.story, html.story body { background:#000; }
 .st-cue svg { width:14px; height:14px; }
 @media (max-width: 860px) { .dk-step { grid-template-columns:1fr; } }
 
-/* a panel: a rounded sheet of dark glass with a hairline edge, a small tag in its corner and one picture or figure inside.
-   --k (1..0, from story.js) is how solid it is: 1 = the current panel, lower = a panel further back in the stack. */
 .dk-panel { position:relative; aspect-ratio:16 / 10; width:100%; border:1px solid rgba(255,255,255, calc(.16 + .1 * var(--k, 1))); border-radius:18px; overflow:hidden;
   background:rgba(var(--glass), calc(.1 + .82 * var(--k, 1))); }
 .pn-tag { position:absolute; z-index:2; left:18px; top:16px; font:500 clamp(10px, .76vw, 13px)/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--quiet); }
@@ -109,21 +92,17 @@ html.story, html.story body { background:#000; }
 .pn-body { position:absolute; inset:0; opacity:var(--k, 1); }
 .pn-pic img { display:block; width:100%; height:100%; object-fit:cover; }
 
-/* the input and the answer: the same picture, cut with clip-path: inset(top right bottom left) to its input part or its answer part.
-   400 of the 420 samples = 95.238% of the width; the cut sits a hair right of that so the dashed "now" line stays with the input.
-   --u (0..1, from story.js) draws each one in from the left as its panel settles; without motion it is 1. */
 .pn-plot .pn-body { inset:52px 26px 26px 52px; }
 .pn-plot img { display:block; width:100%; height:100%; }
 .pl-rows { position:absolute; left:-30px; top:0; bottom:0; display:grid; grid-template-rows:repeat(4, 1fr); align-items:center; font:500 13px/1 var(--mono); color:var(--quiet); }
 .pl-in  { clip-path:inset(0 calc(100% - var(--u, 1) * 95.36%) 0 0); }
 .pl-out { clip-path:inset(0 calc((1 - var(--u, 1)) * 4.64%) 0 95.36%); }
+html:not(.st-motion) .pl-out { clip-path:none; }
 .pl-score { position:absolute; top:-8px; bottom:-8px; right:-1px; width:2px; background:var(--amber); border-radius:2px; box-shadow:0 0 14px 2px rgba(240,178,74,.55); opacity:clamp(0, calc((var(--u, 1) - .85) * 8), 1); }
 .pn-answer { border-color:rgba(132,178,255,.5); }
-html.st-motion .pn-answer { background:rgba(132,178,255,.04); }   /* clear glass: the input on the panel behind shows through it */
+html.st-motion .pn-answer { background:rgba(132,178,255,.04); }
 html.st-motion .pn-answer .pn-body { inset:52px 26px 26px 52px; }
 
-/* the dot field: 50 × 20 dots drawn as a repeating background. The lit copy (i) is cut to the share of recordings still in:
-   from --from to --to as the panel settles (--u). One column of dots is 2% of the recordings. */
 .pn-dots .pn-body { inset:56px 30px 26px 30px; display:flex; flex-direction:column; justify-content:center; gap:22px; }
 .dots, .dots i { background-image:radial-gradient(circle, currentColor 0 30%, transparent 34%); background-size:2% 5%; }
 .dots { position:relative; aspect-ratio:50 / 20; color:#2a2a2a; }
@@ -135,26 +114,22 @@ html.st-motion .pn-answer .pn-body { inset:52px 26px 26px 52px; }
 .pn-split .st-split { margin-top:0; height:clamp(44px, 7vw, 84px); }
 .dk-text .st-doors { grid-template-columns:1fr; gap:12px; margin-top:28px; }
 .dk-text h3 { margin:28px 0 0; font-size:21px; }
-.pn-body .pn-xfade { position:absolute; inset:0; }   /* the old picture laid over a held panel's new one while it fades out (story.js showPic) */
+.pn-body .pn-xfade { position:absolute; inset:0; }
 
-/* a results panel: bars or the number band, with a caption. In the plain article it is as tall as its content; in motion mode it
-   takes the deck's 16:10 shape and its type scales with the panel (font-size from the panel width, everything inside in em). */
 .pn-res { aspect-ratio:auto; }
 .pn-res .pn-body { position:relative; inset:auto; display:flex; flex-direction:column; justify-content:center; gap:22px; padding:60px 30px 30px; }
 .pn-res .st-band { margin:0; grid-template-columns:repeat(2, minmax(0, 1fr)); }
 .pn-res .st-band .is-ours dd { color:var(--blue); }
+@media (max-width: 480px) { .pn-res .pn-body { padding:52px 18px 22px; } .pn-res .st-band { grid-template-columns:1fr; } }
 .pn-cap { margin:0; font-size:14.5px; line-height:1.5; color:var(--quiet); }
-/* two groups of bars in one results panel (the accuracy step: full test, then the 20-player benchmark): a small label over each group */
 .pn-grp { display:grid; gap:12px; }
 .pn-sub { margin:0; font:500 12px/1.3 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--quiet); }
 
-/* the heading band between two decks: scrolls normally, a breath between pinned stretches */
 .st-break { max-width:var(--col); margin:0 auto; padding:clamp(72px, 14vh, 160px) clamp(20px, 4vw, 48px); border-top:1px solid var(--rule); }
 .st-break .st-kicker { margin-bottom:18px; }
 .st-break-line { margin:0; max-width:24ch; color:var(--ink); font-size:clamp(30px, 3.3vw, 68px); font-weight:400; letter-spacing:-.025em; line-height:1.1; }
 .dk-text .st-doors a { padding:18px 20px 20px; }
 
-/* ---------------------------------------------------------------- 6. bars: one honest bar per row, every bar starts at zero, values written beside it */
 .st-bars { display:grid; gap:14px; margin:0; padding:0; list-style:none; }
 .st-bars li { display:grid; grid-template-columns:minmax(150px, 240px) minmax(0, 1fr) 110px; align-items:center; gap:18px; }
 .st-bars .b-name { font-size:15.5px; line-height:1.35; color:var(--body); }
@@ -167,10 +142,6 @@ html.st-motion .pn-answer .pn-body { inset:52px 26px 26px 52px; }
 .st-bars li.is-kept .b-fill { background:var(--blue); }
 @media (max-width: 760px) { .st-bars li { grid-template-columns:minmax(0, 1fr) auto; gap:6px 12px; } .st-bars .b-name { grid-column:1 / -1; } }
 
-/* The three widths are the final dataset's players per group: 5,243 / 786 / 1,049 (manifest_moredata_final.json "totals").
-   A grid with minmax(0, Nfr) columns makes each part exactly its share of the bar. (As flex items each part got its 24 px of
-   padding on top of its share, so "train" drew 69% wide for 74% of the players.) The bar is a size container: when it is under
-   420 px wide (a phone) the labels get less padding and smaller type, sized from the bar's own width (cqw), so "786" and "1,049" fit. */
 .st-split { display:grid; grid-template-columns:minmax(0, 5243fr) minmax(0, 786fr) minmax(0, 1049fr); gap:3px; height:44px; margin-top:28px; container-type:inline-size; }
 .st-split span { display:flex; align-items:center; padding:0 12px; font:500 13px/1 var(--mono); color:#000; border-radius:2px; white-space:nowrap; overflow:hidden; }
 @container (max-width:420px) { .st-split span { padding:0 4px; font-size:clamp(9.5px, 3.7cqw, 13px); } }
@@ -179,7 +150,6 @@ html.st-motion .pn-answer .pn-body { inset:52px 26px 26px 52px; }
 .st-split-key b { color:var(--ink); font:500 14.5px/1 var(--mono); }
 .st-split-key i { display:inline-block; width:10px; height:10px; margin-right:8px; border-radius:2px; }
 
-/* ---------------------------------------------------------------- 7. results band, link cards, credits */
 .st-band { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:1px; margin:clamp(40px, 7vh, 72px) 0 0; border:1px solid var(--rule); border-radius:10px; overflow:hidden; background:var(--rule); }
 .st-band div { background:var(--bg); padding:28px 24px 26px; }
 .st-band dt { font-size:14px; line-height:1.45; color:var(--quiet); }
@@ -192,7 +162,7 @@ html.st-motion .pn-answer .pn-body { inset:52px 26px 26px 52px; }
 .st-doors a { display:block; padding:22px 22px 24px; border:1px solid var(--line); border-radius:8px; color:var(--body); text-decoration:none; transition:border-color .18s, background .18s; }
 .st-doors a:hover { border-color:var(--line-hi); background:rgba(255,255,255,.03); }
 .st-doors b { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; color:var(--ink); font-size:1.15em; font-weight:400; letter-spacing:-.01em; }
-#story #exploreBtn { background:var(--go); border-color:#24523a; color:var(--go-ink); }   /* the primary action of the page */
+#story #exploreBtn { background:var(--go); border-color:#24523a; color:var(--go-ink); }
 #story #exploreBtn b { color:#fff; }
 #story #exploreBtn:hover { background:var(--go-hi); }
 .st-doors svg { width:18px; height:18px; flex:none; }
@@ -204,7 +174,6 @@ html.st-motion .pn-answer .pn-body { inset:52px 26px 26px 52px; }
 .st-credits dl { display:grid; grid-template-columns:minmax(120px, 170px) minmax(0, 1fr); gap:14px 28px; max-width:820px; margin:40px 0 0; font-size:.9em; line-height:1.55; }
 .st-credits dt { color:var(--quiet); font:400 12px/2 var(--mono); letter-spacing:.1em; text-transform:uppercase; }
 .st-credits dd { margin:0; }
-/* the team: one outlined card per person; a card still waiting for its person is dashed */
 .tm-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:16px; max-width:none; margin:40px 0 0; padding:0; list-style:none; }
 .tm-grid.tm-two { grid-template-columns:repeat(4, minmax(0, 1fr)); margin-top:18px; }
 .tm-two .tm-card { grid-column:span 2; }
@@ -215,28 +184,25 @@ html.st-motion .pn-answer .pn-body { inset:52px 26px 26px 52px; }
 .tm-card.tm-open h3 { color:var(--quiet); }
 .tm-card .tm-role { margin:8px 0 0; font-size:.9em; line-height:1.5; color:var(--body); }
 .tm-card .st-draft { margin-left:0; }
-.tm-card { display:flex; flex-direction:column; } .tm-card .tm-role { margin-top:auto; padding-top:8px; }   /* a name that wraps onto two lines must not push its role line below its neighbours': the role sits on the card's bottom edge */
+.tm-card { display:flex; flex-direction:column; } .tm-card .tm-role { margin-top:auto; padding-top:8px; }
 .st-kicker.tm-sub { margin-top:48px; }
 @media (max-width: 900px) { .tm-grid, .tm-grid.tm-two { grid-template-columns:repeat(2, minmax(0, 1fr)); } .tm-two .tm-card { grid-column:auto; } }
 @media (max-width: 480px) { .tm-grid, .tm-grid.tm-two { grid-template-columns:1fr; } }
-/* the paper: an empty frame until there is a PDF, then the PDF in the same frame with its links above it */
 .st-top .st-name b { font-weight:600; }
-@media (max-width: 620px) { .st-top .st-name .st-sub { display:none; } }   /* a phone-width bar has room for the team name and the button only */
+@media (max-width: 620px) { .st-top .st-name .st-sub { display:none; } }
 .st-paper .pp-empty { max-width:820px; margin:40px 0 0; padding:clamp(28px, 5vw, 56px); border:1px dashed var(--line, #2c2c2c); border-radius:6px; }
 .st-paper .pp-empty p:first-child { margin-top:0; }
 .st-paper .pp-empty .st-draft { margin-left:0; }
 .st-paper .pp-links { display:flex; flex-wrap:wrap; gap:10px 28px; max-width:none; font-size:.95em; }
 .st-paper .pp-doc { display:block; width:100%; height:min(86svh, 1100px); margin:28px 0 0; border:1px solid var(--line, #2c2c2c); border-radius:6px; background:#0a0a0a; }
 .st-paper .pp-doc p { padding:24px; }
-.st-draft { display:inline-block; margin-left:8px; padding:2px 8px; border:1px dashed var(--amber); border-radius:6px; color:var(--amber); font:500 12px/1.5 var(--mono); }   /* text the team still has to write */
+.st-draft { display:inline-block; margin-left:8px; padding:2px 8px; border:1px dashed var(--amber); border-radius:6px; color:var(--amber); font:500 12px/1.5 var(--mono); }
 @media (max-width: 620px) { .st-credits dl { grid-template-columns:1fr; gap:2px 0; } .st-credits dd { margin-bottom:14px; } }
 
 
-/* the parts that exist only for live 3D: the stage elements, and the controls that belong to a live stage. In the plain article
-   (no motion, no JavaScript, a phone) none of them is shown; empty formula and graph slots take no room. */
-.dk-space, .dk-live, .dk-live.dk-ctl { display:none; }   /* .dk-ctl alone is a flex row; inside the plain article it stays hidden */
+.dk-space, .dk-live, .dk-live.dk-ctl { display:none; }
 .dk-math:empty, .dk-inset:empty { display:none; }
-.dk-sr { position:absolute !important; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }   /* read by screen readers (the stages' descriptions), not shown */
+.dk-sr { position:absolute !important; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .dk-ctl { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-top:20px; font-size:13.5px; line-height:1.4; color:var(--quiet); }
 .dk-ctl button { font:400 11.5px/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:var(--ink); background:transparent; border:1px solid var(--line); border-radius:6px; padding:9px 12px; cursor:pointer; transition:border-color .15s; }
 .dk-ctl button:hover { border-color:var(--line-hi); }
@@ -246,62 +212,39 @@ html.st-motion .pn-answer .pn-body { inset:52px 26px 26px 52px; }
 #heroReadout b { color:var(--ink); font-weight:500; }
 .dk-ctl-label { font:500 12px/1.4 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--quiet); }
 
-/* ---------------------------------------------------------------- 8. the decks in motion (html.st-motion is set by story.js)
- * Each .dk-track gets its height from story.js (the stage + 160% of a window per step). .dk-stage sticks below the top bar and is
- * as wide as the window. Every step is laid over the whole stage. The stage is split in two: the text column and the free area
- * (--free of the width, SPEC G1: 55 to 62%). The free area holds the deck's stage element (.dk-space, where a live module draws)
- * and, as the fallback, the cards.
- * Sides (SPEC H1). --flip (from story.js) is 0 with the text on the right and 1 with the text on the left; between two steps whose
- * sides differ it runs from one to the other with scroll. Every position below is written as a mix of the two layouts by --flip:
- *   free area  left = (100% − free) × flip           text column  left = free × (1 − flip)
- * so the two swap sides continuously and reverse with scroll. --ta (from story.js) fades the text out while they move.
- * Cards: story.js writes each card's transform: a turn (rotateY, rotateX) and a push along the depth axis (translateZ). perspective
- * on .dk-fig is what makes nearer cards larger and farther ones smaller. A card sits against the inner edge of the free area (next
- * to the text); passed cards fan out towards the outer edge. --pw is the card width, from the window (SPEC E5), never taller than
- * the stage allows (width = height × 1.6 for the 16:10 cards); --fan is the room the passed cards need as they fan out. */
 html.st-motion .dk-track { max-width:none; padding:0; --pad:clamp(20px, 4vw, 48px); --gap:clamp(40px, 5vw, 96px); --free:60%;
   --pw:min(46vw, (100svh - var(--bar)) * .62 * 1.6); --fan:calc(var(--pw) * .16); --f:var(--flip, 0); }
-html.st-motion .dk-model { --free:62%; --pw:min(57vw, (100svh - var(--bar)) * .8 * 1.6); --fan:0px; }   /* one held card: nothing fans out */
+html.st-motion .dk-model { --free:62%; --pw:min(57vw, (100svh - var(--bar)) * .8 * 1.6); --fan:0px; }
 html.st-motion .dk-stage { position:sticky; top:var(--bar); height:calc(100svh - var(--bar)); }
 html.st-motion .dk-step { position:absolute; inset:0; display:block; padding:0; border:0; pointer-events:none; }
 
-/* the text column: --pad on its outer side, --gap towards the free area */
 html.st-motion .dk-text { position:absolute; top:0; bottom:0; left:calc(var(--free) * (1 - var(--f))); width:calc(100% - var(--free));
   display:flex; flex-direction:column; justify-content:center;
   padding:0 calc(var(--pad) * (1 - var(--f)) + var(--gap) * var(--f)) clamp(64px, 10vh, 104px) calc(var(--gap) * (1 - var(--f)) + var(--pad) * var(--f));
   opacity:0; visibility:hidden; transition:opacity .25s ease-out, visibility 0s .25s;
-  filter:opacity(var(--ta, 1)); }   /* filter, not opacity: opacity carries the time-based fade between steps; --ta follows scroll.
-     On EVERY step's text, not only the current one: at a side flip the current step changes half-way, where --ta is 0 and the
-     column is moving; the step that stops being current must stay hidden by --ta while its own opacity fades, or it flashes. */
+  filter:opacity(var(--ta, 1)); }
 html.st-motion .dk-step.is-cur .dk-text { opacity:1; visibility:visible; pointer-events:auto; transition:opacity .3s ease-out .08s; }
 html.st-motion .dk-text > * { flex:none; }
 
-/* the free area, for the cards (.dk-fig) and for the stage element (.dk-space): the same box */
 html.st-motion .dk-fig, html.st-motion .dk-space { position:absolute; top:0; bottom:0; left:calc((100% - var(--free)) * var(--f)); width:var(--free); margin:0; }
 html.st-motion .dk-fig { perspective:1500px; perspective-origin:calc((100% - var(--pw)) * (1 - var(--f)) + var(--pw) * (.54 - .08 * var(--f))) 50%; transition:opacity .3s ease-out; }
-html.st-motion .dk-step.dk-follow .dk-fig { display:none; }   /* a step that shares its slot shows the held card, not one of its own */
+html.st-motion .dk-step.dk-follow .dk-fig { display:none; }
 html.st-motion .dk-panel { position:absolute; top:50%; left:calc((100% - var(--pw)) * (1 - var(--f))); width:var(--pw); margin-top:calc(var(--pw) / -3.2);
   visibility:hidden; will-change:transform, opacity; -webkit-backface-visibility:hidden; backface-visibility:hidden; }
-html.st-motion .dk-model .dk-panel { transform-origin:0 50%; }   /* the model card grows on its last step towards the text, away from the window's edge */
+html.st-motion .dk-model .dk-panel { transform-origin:0 50%; }
 
-/* the stage element (SPEC G1, CONTRACTS section 3): no frame, fill or corners; no pointer input. It shows once its module has drawn
-   a frame and set data-live="on"; then the deck's cards fade out (300 ms), and they come back when the attribute goes. The track's
-   .is-live is story.js's copy of that attribute (Deck.syncLive), so these rules need no :has(), which not every browser supports. */
 html.st-motion .dk-space { display:block; border:0; border-radius:0; background:none; pointer-events:none; opacity:0; visibility:hidden; transition:opacity .3s ease-out, visibility 0s .3s; }
 html.st-motion .dk-space[data-live="on"] { opacity:1; visibility:visible; transition:opacity .3s ease-out; }
 html.st-motion .dk-track.is-live .dk-fig { opacity:0; visibility:hidden; transition:opacity .3s ease-out, visibility 0s .3s; }
 html.st-motion .dk-space *, html.st-motion .dk-space { -webkit-user-select:none; user-select:none; }
 
-/* controls of a live stage, shown only while it is live: the hero's in the first step's text; the model's (.dk-deckctl) at the top of
-   the text column for all of its steps, with the steps' text moved down to make room */
 html.st-motion .dk-track.is-live .dk-live { display:block; }
 html.st-motion .dk-track.is-live .dk-deckctl { display:flex; }
 html.st-motion .dk-deckctl { position:absolute; z-index:2; top:clamp(20px, 4vh, 40px); margin:0; pointer-events:auto;
   left:calc(var(--free) * (1 - var(--f)) + var(--gap) * (1 - var(--f)) + var(--pad) * var(--f)); width:calc(100% - var(--free) - var(--gap) - var(--pad)); filter:opacity(var(--ta, 1)); }
 html.st-motion .dk-track.is-live .dk-deckctl ~ .dk-step:not([data-key="explore"]) .dk-text { padding-top:clamp(64px, 11vh, 96px); }
-html.st-motion .dk-track[data-phase="explore"] .dk-deckctl { display:none !important; }   /* "Now drive it yourself" needs the whole column */
+html.st-motion .dk-track[data-phase="explore"] .dk-deckctl { display:none !important; }
 
-/* results panels in motion: 16:10 like the rest, type scaled from the panel width (16px at a 640px panel) */
 html.st-motion .pn-res { aspect-ratio:16 / 10; font-size:calc(var(--pw) * .025); }
 html.st-motion .pn-res .pn-body { position:absolute; inset:0; padding:3.6em 2em 1.8em; gap:1.4em; }
 html.st-motion .pn-res .st-bars { gap:.9em; }
@@ -313,23 +256,30 @@ html.st-motion .pn-res .pn-grp { gap:.7em; } html.st-motion .pn-res .pn-sub { fo
 html.st-motion .pn-res .st-band div { padding:1.4em 1.4em 1.3em; }
 html.st-motion .pn-res .st-band dt { font-size:.85em; }
 html.st-motion .pn-res .st-band dd { font-size:2.3em; }
-/* the results as open layers (SPEC G6): no outer card. The front sheet (--k = 1) has no edge and no corners, only the page's own
-   black behind its figures, so the sheets behind it never show through the numbers; a passed sheet (--k falling) loses its content
-   and its fill and keeps a 1 px outline. */
 html.st-motion .dk-results .dk-panel { border-radius:0; border-color:rgba(255,255,255, calc(.3 * (1 - var(--k, 1)) / .88)); background:rgba(0,0,0, var(--k, 1)); }
 html.st-motion .dk-results .pn-body { opacity:clamp(0, calc((var(--k, 1) - .7) * 3.4), 1); }
 html.st-motion .dk-results .pn-tag { opacity:clamp(.35, var(--k, 1), 1); }
 
-/* .dk-text's bottom padding keeps the text clear of the rail.
-   the phase names under the text column; the current one (li.is-on, set by story.js) is lit. It moves and fades with the text. */
 html.st-motion .dk-rail { display:flex; flex-wrap:wrap; gap:12px 22px; position:absolute; z-index:3; bottom:clamp(20px, 5vh, 48px); margin:0; padding:0; list-style:none;
   left:calc(var(--free) * (1 - var(--f)) + var(--gap) * (1 - var(--f)) + var(--pad) * var(--f)); max-width:calc(100% - var(--free) - var(--gap) - var(--pad));
   font:400 clamp(10.5px, .78vw, 13px)/1 var(--mono); letter-spacing:.1em; text-transform:uppercase; color:#5c5c5c; filter:opacity(var(--ta, 1)); }
 html.st-motion .dk-model .dk-rail { gap:10px 12px; font-size:11px; letter-spacing:.1em; }
-html.st-motion .dk-model .dk-text { padding-bottom:clamp(92px, 14vh, 132px); }   /* the model's rail of eight phases takes two rows in a narrow column */
+html.st-motion .dk-model .dk-text { padding-bottom:clamp(92px, 14vh, 132px); }
 html.st-motion .dk-rail li { padding-top:10px; border-top:1px solid #262626; transition:color .25s, border-color .25s; }
 html.st-motion .dk-rail li.is-on { color:var(--ink); border-top-color:var(--ink); }
 
-/* the maths beside the stage (SPEC H5): formula lines in the mono face, the curve graph under them */
-.dk-math { margin-top:20px; font:400 clamp(11.5px, .86vw, 14px)/1.7 var(--mono); color:#b4b4b4; white-space:pre-wrap; }   /* 9.6:1 on black */
+.dk-math { margin-top:20px; font:400 clamp(11.5px, .86vw, 14px)/1.7 var(--mono); color:#b4b4b4; white-space:pre-wrap; }
 .dk-inset { margin-top:16px; max-width:420px; }
+
+@media (max-width: 768px) and (orientation: portrait) {
+  #story :is(.pn-tag, .st-kicker, .st-cue, .tm-kind, .tm-link, .st-band dd small) { font-size:12px; }
+  #s-hook .pn-tag { max-width:50%; line-height:1.35; }
+  .pn-split .pn-body { inset:56px 18px 26px; }
+  #story .st-split span { padding:0 3px; font-size:12px; }
+}
+@media (pointer: coarse) {
+  .tm-card .tm-link, #story .st-cue { position:relative; }
+  .tm-card .tm-link::before, #story .st-cue::before { content:""; position:absolute; left:-6px; right:-6px; top:50%; height:44px; margin-top:-22px; }
+  .st-top nav a.st-cta { padding-top:11px; padding-bottom:11px; }
+  .st-top .st-name { padding:11px 0; }
+}

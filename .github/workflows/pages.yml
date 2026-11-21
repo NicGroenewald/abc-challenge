@@ -1,5 +1,4 @@
-# Publishes visualization/ as the team's site, https://motion-pending.github.io/ (this repo is named
-# motion-pending.github.io, so GitHub serves it at the organisation's root address).
+# Publishes visualization/ as the team's site, https://motion-pending.github.io/motion-pending/.
 # Runs on every push to main that changes the site, or by hand from the Actions tab.
 name: Publish site
 
@@ -23,7 +22,7 @@ jobs:
   # failed with "No artifacts named github-pages were found" (the upload was not listed yet).
   # Only the team repo publishes; personal copies (forks) of it skip both jobs instead of failing.
   build:
-    if: github.repository == 'Motion-Pending/motion-pending.github.io'
+    if: github.repository_owner == 'Motion-Pending'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

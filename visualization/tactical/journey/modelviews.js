@@ -1,12 +1,5 @@
-// modelviews.js: two interactive versions of the journey's model level, to compare in the dive prototype (dive.html?model=a|b).
-//   A  "etched": k8 as a floorplan etched on the NPU tile, tilted; click a stage and the die zooms to it, the side panel opens it.
-//   B  "console": a flat tactical console, the stages left to right; click a stage and the flow zooms to it, a detail panel opens.
-// Both replay the QuestSet player's real trace (traces/test50.js, made by tools/make_questset_data.py: every value below is what the model computed) at quarter speed, and
-// share the stage texts (from the story page) and the live widgets. Each returns a level object that dive.js treats like the iframe
-// viewer: { external, layer, load(), enter(), leave(), reset(), unzoom() }.
 
-// ---------------------------------------------------------------- data
-const SIGNS = [1, -1, -1, 1, -1, 1, 1];                 // the mirror: flip ωy, ωz, gx (viewer.mjs SIGNS)
+const SIGNS = [1, -1, -1, 1, -1, 1, 1];
 const DIL = [1, 8, 47];
 const FEAT = ['ωx', 'ωy', 'ωz', 'speed', 'gx', 'gy', 'gz'];
 let TRACE = null, loading = null;
@@ -17,12 +10,12 @@ export function loadTrace() {
     window.TRACES = window.TRACES || {};
     const s = document.createElement('script'); s.src = '../traces/test50.js?r=q1';
     s.onload = () => { TRACE = window.TRACES.test50 || Object.values(window.TRACES)[0]; ok(TRACE); };
-    s.onerror = () => bad(new Error('traces/test50.js did not load')); document.head.append(s);
+    s.onerror = () => { loading = null; s.remove(); bad(new Error('traces/test50.js did not load')); };
+    document.head.append(s);
   });
   return loading;
 }
 const geo = (a, b) => { const d = Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]); return 2 * Math.acos(Math.min(1, d)) * 180 / Math.PI; };
-// One sample of the trace, reshaped: lanes are [observed h0, mirrored h1].
 function frame(i) {
   const s = TRACE.steps[i], f = s.features[0][0];
   const lanes = a => [0, 1].map(l => a[0].map(c => c[l][0]));
@@ -31,14 +24,12 @@ function frame(i) {
     r: s.trajectory_r[0], pred: s.prediction[0], truth: s.ground_truth, err: s.error_step20_deg, hold: s.hold_error_step20_deg,
     errs: s.prediction[0].map((p, k) => geo(p, s.ground_truth[k])) };
 }
-// a block's input over its last 7*d + 1 samples (lane h0, mean over the 32 channels), oldest first: what its taps reach into
 function blockInput(i, b) {
   const n = 7 * DIL[b] + 1, out = [];
   for (let k = i - n + 1; k <= i; k++) { const s = TRACE.steps[Math.max(0, k)], a = b === 0 ? s.projection_relu : s['block_' + (b - 1)];
     let m = 0; for (const c of a[0]) m += c[0][0]; out.push(m / 32); }
   return out;
 }
-// The replay: the 300 scored samples (they have a prediction and an error), looped, at `rate` samples per second.
 function makeClock() {
   const c = { rate: 25, playing: true, i: 0, acc: 0, first: 0, last: 0,
     init() { const st = TRACE.steps; this.first = st.findIndex(s => s.prediction); this.last = st.length - 1; this.i = this.first; },
@@ -47,7 +38,6 @@ function makeClock() {
   return c;
 }
 
-// ---------------------------------------------------------------- stages (texts from the story page's model steps)
 export const STAGES = [
   { k: 'input', n: '01', title: 'Input', short: 'INPUT\nQUATERNION IN',
     text: 'Every 10 ms the headset reports one orientation: four numbers (w, x, y, z). The model reads only the two newest; everything older is already summarised in its memory.' },
@@ -68,7 +58,6 @@ export const STAGES = [
 ];
 const byK = Object.fromEntries(STAGES.map(s => [s.k, s]));
 
-// ---------------------------------------------------------------- shared look + live widgets
 const CSS = `
 .mv { position: fixed; inset: 0; background: #010101; color: #f1f0ea; font-family: Geist, sans-serif; opacity: 0; visibility: hidden; overflow: hidden; }
 .mv .mono, .mv .w { font-family: GeistMono, monospace; letter-spacing: .06em; text-transform: uppercase; }
@@ -97,17 +86,14 @@ const CSS = `
 .mv .pause { position: absolute; left: 40px; bottom: 30px; font: 11px GeistMono; letter-spacing: .08em; color: #6c6e6b; background: none; border: 1px solid #2f3234; color: #b0b0a9; padding: 7px 12px; cursor: pointer; }
 .mv .pause:hover { border-color: #f1f0ea; color: #f1f0ea; }
 @keyframes mvflow { to { stroke-dashoffset: -100; } }
+html.phone .mv .pause { left: 12px; bottom: calc(66px + env(safe-area-inset-bottom)); min-height: 44px; }
 `;
+const isPhone = () => document.documentElement.classList.contains('phone');
 export function addCSS(extra) { const s = document.createElement('style'); s.textContent = CSS + extra; document.head.append(s); }
-const heat = v => `rgba(223,241,64,${Math.min(1, .05 + Math.abs(v) * 2.2)})`;   // a channel's activation as acid-yellow brightness
+const heat = v => `rgba(223,241,64,${Math.min(1, .05 + Math.abs(v) * 2.2)})`;
 const cellFill = v => { const a = Math.min(1, Math.abs(v) / .063); return v > 0 ? `rgba(223,241,64,${.25 + .75 * a})` : `rgba(176,176,169,${.2 + .6 * a})`; };
 export const fx = (v, d = 3) => (v < 0 ? '−' : '') + Math.abs(v).toFixed(d);
 
-// The reach tree (the story viewer's "reach" shot, in 2D). Four rows, time running left (−392) to right (now):
-//   B3 output, B2 output, B1 output, projection. Each row is a live strip of that layer's real activation history (mean over the
-//   32 channels of lane h⁰, binned 3 samples per cell). Lines: B3's newest output reads 8 B2 outputs, 47 apart; each of those read
-//   8 B1 outputs, 8 apart; each of those read 8 projection samples in a row. 8 + 64 + 512 lines, drawn as three paths. One chain
-//   (one B3 tap → one B2 tap → its 8 samples) is highlighted and cycles, so the eye can follow a single path down.
 let MEANS = null;
 function means() {
   if (MEANS) return MEANS;
@@ -119,13 +105,12 @@ function means() {
 function reachTree(root, w, h, compact, bottomLabel) {
   const NS = 'http://www.w3.org/2000/svg', mk = (tag, a, p = root) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); p.append(e); return e; };
   const L = compact ? 26 : 58, R = w - 2, X = a => R - a / 392 * (R - L);
-  const ROWS = [['B3', 3], ['B2', 2], ['B1', 1], [bottomLabel || (compact ? 'IN' : 'PROJ'), 0]];        // top to bottom; [label, layer index into MEANS]
+  const ROWS = [['B3', 3], ['B2', 2], ['B1', 1], [bottomLabel || (compact ? 'IN' : 'PROJ'), 0]];
   const rh = h * (compact ? .085 : .075), gap = (h - 4 * rh) / 3, top = r => r * (rh + gap), bot = r => top(r) + rh;
   const fs = compact ? 7.5 : 15;
   ROWS.forEach(([lab], r) => { const e = mk('text', { x: 0, y: top(r) + rh * .85, fill: '#6c6e6b', 'font-size': fs, 'font-family': 'GeistMono', 'letter-spacing': 1 }); e.textContent = lab; });
   const BINS = 131, bw = (R - L) / BINS;
   const strips = ROWS.map((_, r) => [...Array(BINS)].map((_, b) => mk('rect', { x: (R - (b + 1) * bw).toFixed(2), y: top(r), width: (bw + .3).toFixed(2), height: rh, fill: '#111' })));
-  // the fixed geometry of the fans
   let d3 = '', d2 = '', d1 = '';
   for (let j = 0; j < 8; j++) { const a2 = 47 * j; d3 += `M${X(0)} ${bot(0)}L${X(a2)} ${top(1)}`;
     for (let k = 0; k < 8; k++) { const a1 = a2 + 8 * k; d2 += `M${X(a2)} ${bot(1)}L${X(a1)} ${top(2)}`;
@@ -146,16 +131,12 @@ function reachTree(root, w, h, compact, bottomLabel) {
     [[X(0), bot(0)], [X(a2), top(1)], [X(a1), top(2)]].forEach(([x, y], n) => { dots[n].setAttribute('cx', x); dots[n].setAttribute('cy', y); }); };
   const iv = setInterval(() => { if (!root.isConnected) return clearInterval(iv); step = (step + 1) % 64; showChain(); }, 650);
   showChain();
-  // live strips: bin b holds the sample 3b steps back
   return F => { const M = means();
     ROWS.forEach(([, li], r) => { const arr = M[li], sc = M.scale[li];
       strips[r].forEach((c, b) => { const v = arr[Math.max(0, F.i - 3 * b)]; c.setAttribute('fill', `rgba(223,241,64,${(.06 + .8 * Math.min(1, Math.abs(v) / sc)).toFixed(3)})`); }); }); };
 }
 
-// (16 Nov) The side panel's "tap tree" magnifier (three rows, each zoomed into the one above) was replaced by the same reach tree the
-// etched view draws (Nic: the magnifier "doesn't look right", the etched one "looks good"). proto/modelviews.js still has it.
 
-// A widget is built once (static DOM) and returns update(frame), which only changes text and colours.
 export function widget(k, el, big = false) {
   el.classList.add('w'); el.innerHTML = '';
   const add = h => { el.insertAdjacentHTML('beforeend', h); return el.lastElementChild; };
@@ -180,14 +161,13 @@ export function widget(k, el, big = false) {
       act.textContent = F.proj.flat().filter(v => v > 0).length + ' / 64'; };
   }
   if (k === 'blocks') {
-    if (!big) {                                           // the console's Blocks box: the reach tree, plus each block's reach in seconds
+    if (!big) {
       const sv = add('<svg viewBox="0 0 250 132" style="width:100%;height:auto;display:block;margin:2px 0 8px"></svg>');
       const u = reachTree(sv, 250, 132, true);
       [0, 1, 2].forEach(b => add(`<div class="rw">BLOCK ${b + 1} · EVERY ${DIL[b] === 1 ? 'SAMPLE' : DIL[b] + 'TH'} <b>${(7 * DIL[b] / 100).toFixed(2)} S</b></div>`));
       add('<div class="rw dim">TOGETHER: 393 SAMPLES, 3.9 S</div>');
       return u;
     }
-    // the reach tree, as on the etched die: PROJ, B1, B2, B3 strips (live), the fan-in links, one chain lit at a time
     add('<div class="rw dim">HOW 8 TAPS PER BLOCK REACH 393 SAMPLES</div>');
     const tv = add('<svg viewBox="0 0 300 150" style="width:100%;height:auto;display:block;margin:4px 0 2px"></svg>');
     const tree = reachTree(tv, 300, 150, true, 'PROJ');
@@ -224,18 +204,17 @@ export function widget(k, el, big = false) {
     add('<div class="rw">TEST-SET MEAN (1,049 PLAYERS) <b>4.50°</b></div>');
     const bars = add('<div class="bars"></div>'); for (let j = 0; j < 20; j++) bars.append(document.createElement('i'));
     add('<div class="rw dim">ERROR AT EACH OF THE 20 STEPS · SCORED: THE LAST</div>');
-    if (big) { const go = add('<button type="button" class="seepredict">SEE IT PREDICT  →</button>');   // the ending (journey.js finale)
+    if (big) { const go = add('<button type="button" class="seepredict">SEE IT PREDICT  →</button>');
       go.addEventListener('click', () => dispatchEvent(new CustomEvent('k8:finale'))); }
     return F => { e.innerHTML = F.err.toFixed(2) + '°<small> OFF</small>'; h.textContent = F.hold.toFixed(2) + '°';
       const m = Math.max(1, ...F.errs); [...bars.children].forEach((b, j) => b.style.height = (F.errs[j] / m * 100) + '%'); };
   }
 }
 
-// ---------------------------------------------------------------- shared level plumbing
 export function level(name, layer, onFrame, api) {
   let clock = null, raf = 0, last = 0, F = null, pauseBtn = null;
   const run = now => { const dt = Math.min(.1, (now - last) / 1000); last = now; if (clock.tick(dt) || !F) { F = frame(clock.i); onFrame(F); }
-    if (api.tick) api.tick(dt, clock.playing);                       // per-frame animation of the view itself (A: the pulse)
+    if (api.tick) api.tick(dt, clock.playing);
     raf = requestAnimationFrame(run); };
   const key = e => { if (e.key === ' ' && lvl.active) { e.preventDefault(); toggle(); } };
   const setPlaying = p => { clock.playing = p; pauseBtn.textContent = p ? '❚❚ PAUSE (SPACE)' : '▶ PLAY (SPACE)'; if (api.onPlaying) api.onPlaying(p); };
@@ -249,7 +228,6 @@ export function level(name, layer, onFrame, api) {
     reset() { api.select(null); },
     unzoom() { api.select(null); },
     get frame() { return F; },
-    // scrubbing (16 Nov, console view): jump to step i of the test clip (it pauses), and play / pause from the view's own controls
     seek(i) { if (!clock) return; clock.i = Math.max(clock.first, Math.min(clock.last, i)); clock.acc = 0; F = frame(clock.i); onFrame(F); },
     setPlaying(p) { if (clock) setPlaying(p); },
     get clip() { return clock ? { first: clock.first, last: clock.last, playing: clock.playing } : null; },
@@ -257,7 +235,6 @@ export function level(name, layer, onFrame, api) {
   return lvl;
 }
 
-// ================================================================ A: etched on the die
 const A_CSS = `
 #mvA .stage { position: absolute; left: 0; top: 0; width: 62vw; height: 100%; perspective: 1600px; display: grid; place-items: center; }
 #mvA .die { width: min(58vw, 96vh); aspect-ratio: 1.3; transform-style: preserve-3d; border-radius: 4px;
@@ -289,8 +266,34 @@ const A_CSS = `
 #mvA .circ { all: unset; width: 44px; height: 44px; border: 1px solid #f1f0ea; border-radius: 50%; display: grid; place-items: center; font-size: 17px; cursor: pointer; }
 #mvA .circ:hover { background: #f1f0ea; color: #010101; }
 #mvA .note { position: absolute; left: 40px; bottom: 74px; font-size: 10.5px; color: #6c6e6b; }
+#mvA .st .hit2, #mvA .prule, #mvA .phint, #mvA .morebtn, #mvA .row .n i { display: none; }
+/* phone portrait (21 Nov 2026): the journey's layout. A frosted text block over the top --ph shows one stage; the die sits below it. */
+html.phone #mvA .stage { top: var(--ph); width: 100%; height: calc(100% - var(--ph) - 116px); }
+html.phone #mvA .die { width: min(94vw, calc((100vh - var(--ph) - 136px) * 1.3)); }
+html.phone #mvA .st .hit2 { display: inline; fill: transparent; }
+html.phone #mvA .st .dot { r: 16px; } html.phone #mvA .st .core { r: 6px; } html.phone #mvA .st:hover .dot, html.phone #mvA .st.on .dot { r: 20px; }
+html.phone #mvA .panel { left: 0; right: 0; width: auto; height: var(--ph); padding: 12px 16px 64px; overflow: hidden; display: flex; flex-direction: column;
+  background: rgba(1,1,1,.35); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+html.phone #mvA.more .panel { height: var(--pmore); overflow-y: auto; }
+html.phone #mvA h1 { flex: none; min-height: 44px; display: flex; align-items: center; margin: 0 112px 6px 0; font-size: 24px; }
+html.phone #mvA h1 br { display: none; }
+html.phone #mvA .prule { display: block; flex: none; position: relative; height: 1px; background: #2f3234; margin: 4px 0 10px; }
+html.phone #mvA .prule::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--p, 0) * 100%); background: #dff140; transition: width .4s; }
+html.phone #mvA:not(.has-open) .phint { display: block; margin: 0; font-size: 11px; line-height: 1.5; color: #b0b0a9; }
+html.phone #mvA .row, html.phone #mvA .row:last-child { display: none; border: 0; }
+html.phone #mvA .row.open { display: block; }
+html.phone #mvA .row > button { display: flex; gap: 14px; min-height: 0; padding-bottom: 6px; font: 500 12px/1.3 GeistMono, monospace; letter-spacing: .08em; text-transform: uppercase; color: #f1f0ea; }
+html.phone #mvA .row .n { font: inherit; color: #dff140; } html.phone #mvA .row .n i { display: inline; font-style: normal; color: #6c6e6b; }
+html.phone #mvA .row .pm, html.phone #mvA .row .wg { display: none; }
+html.phone #mvA .row .body { padding: 0; }
+html.phone #mvA .row .body p { font-size: 15px; line-height: 1.32; margin: 0; cursor: pointer; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+html.phone #mvA.more .row .body p { display: block; margin-bottom: 14px; } html.phone #mvA.more .row .wg { display: block; }
+html.phone #mvA .nav { top: calc(var(--ph) - 56px); right: 12px; bottom: auto; gap: 10px; }
+html.phone #mvA.has-open .morebtn { display: block; position: absolute; left: 16px; top: calc(var(--ph) - 56px); height: 44px; padding: 0; background: none; border: 0;
+  font-size: 11px; color: #b0b0a9; cursor: pointer; }
+html.phone #mvA.more .nav, html.phone #mvA.more .morebtn { top: calc(var(--pmore) - 56px); }
+html.phone #mvA .note { left: 16px; right: 16px; top: calc(var(--ph) + 8px); bottom: auto; font-size: 9px; line-height: 1.5; }
 `;
-// floorplan geometry (SVG units, viewBox 1300 x 1000) and the point each stage zooms to (cx, cy, scale)
 const AZ = { input: [105, 500, 2.6], feat: [215, 500, 2.6], mirror: [230, 620, 2.4], proj: [345, 500, 2.2], blocks: [665, 640, 1.3],
   head: [1085, 500, 2.4], traj: [1085, 690, 2.4], out: [1195, 500, 2.4] };
 export function makeA(ctx) {
@@ -301,21 +304,20 @@ export function makeA(ctx) {
     tick(dt, playing) { if (pulseTick && playing) pulseTick(dt); },
     build() {
       layer.innerHTML = `<div class="stage"><div class="die"></div></div>
-        <aside class="panel"><h1>k8:<br>Inside the NPU</h1><div class="rows"></div></aside>
+        <aside class="panel"><h1>k8:<br> Inside the NPU</h1><div class="prule"></div><p class="phint mono">Tap a stage on the chip, or use → to step through</p><div class="rows"></div></aside>
+        <button type="button" class="morebtn mono" aria-expanded="false">MORE +</button>
         <div class="nav"><button class="circ" data-d="-1" aria-label="Previous stage">←</button><button class="circ" data-d="1" aria-label="Next stage">→</button></div>
         <div class="note mono">ILLUSTRATIVE FLOORPLAN, NOT TO SCALE · LIVE VALUES: TEST PLAYER, QUARTER SPEED</div>`;
       const die = layer.querySelector('.die'); die.innerHTML = dieSVG();
-      // stage hit areas + dots, inside the SVG so they tilt and zoom with the die
       const svg = die.querySelector('svg'), NS = 'http://www.w3.org/2000/svg';
       const HIT = { input: [55, 425, 100, 150], feat: [170, 435, 90, 130], mirror: [160, 585, 140, 90], proj: [290, 330, 110, 340], blocks: [430, 300, 560, 380],
         head: [1030, 410, 105, 150], traj: [1025, 630, 120, 110], out: [1145, 425, 100, 150] };
-      // the reach tree, etched into the free strip below the lanes (die units x 300-1000, y 768-938)
       const rg = document.createElementNS(NS, 'g'); rg.setAttribute('transform', 'translate(300 768)'); svg.append(rg);
       reachUpd = reachTree(rg, 700, 150, false);
       for (const s of STAGES) {
-        const [x, y, w, h] = HIT[s.k], [cx, cy] = s.k === 'blocks' ? [735, 500] : AZ[s.k], g = document.createElementNS(NS, 'g');   // Blocks: dot between the lanes, zoom centre lower (it frames the reach tree too)
+        const [x, y, w, h] = HIT[s.k], [cx, cy] = s.k === 'blocks' ? [735, 500] : AZ[s.k], g = document.createElementNS(NS, 'g');
         g.setAttribute('class', 'st'); g.dataset.k = s.k; g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button'); g.setAttribute('aria-label', s.title);
-        g.innerHTML = (s.k === 'blocks' ? '<rect class="hit" x="300" y="760" width="700" height="185"/>' : '') + `<rect class="hit" x="${x}" y="${y}" width="${w}" height="${h}"/><circle class="dot" cx="${cx}" cy="${cy}" r="10"/><circle class="core" cx="${cx}" cy="${cy}" r="3.5"/>
+        g.innerHTML = (s.k === 'blocks' ? '<rect class="hit" x="300" y="760" width="700" height="185"/>' : '') + `<rect class="hit" x="${x}" y="${y}" width="${w}" height="${h}"/><circle class="hit2" cx="${cx}" cy="${cy}" r="54"/><circle class="dot" cx="${cx}" cy="${cy}" r="10"/><circle class="core" cx="${cx}" cy="${cy}" r="3.5"/>
           <text class="lab" x="${cx + 20}" y="${cy - 16}">${s.short.split('\n')[0]}</text>`;
         g.addEventListener('click', () => api.select(s.k)); g.addEventListener('keydown', e => { if (e.key === 'Enter') api.select(s.k); });
         svg.append(g);
@@ -324,22 +326,30 @@ export function makeA(ctx) {
       layer.querySelector('.note').textContent += ' · LIGHT: ONE SAMPLE THROUGH K8, SLOWED DOWN';
       cellsP = [...svg.querySelectorAll('.cp')]; cellsB = [...svg.querySelectorAll('.cb')]; cellsR = [...svg.querySelectorAll('.cr')];
       outTxt = svg.querySelector('#aOut'); trajP = [...svg.querySelectorAll('.tj')]; taps = [...svg.querySelectorAll('.tap')];
-      // panel rows
       const rows = layer.querySelector('.rows');
       for (const s of STAGES) {
-        rows.insertAdjacentHTML('beforeend', `<div class="row" data-k="${s.k}"><button type="button" aria-expanded="false"><span class="n">${s.n}</span><span>${s.title}</span><span class="pm">+</span></button><div class="body"><p>${s.text}</p><div class="wg"></div></div></div>`);
+        rows.insertAdjacentHTML('beforeend', `<div class="row" data-k="${s.k}"><button type="button" aria-expanded="false"><span class="n">${s.n}<i>/${String(STAGES.length).padStart(2, '0')}</i></span><span>${s.title}</span><span class="pm">+</span></button><div class="body"><p>${s.text}</p><div class="wg"></div></div></div>`);
         rows.lastElementChild.querySelector('button').addEventListener('click', () => api.select(sel === s.k ? null : s.k));
       }
       layer.querySelectorAll('.circ').forEach(b => b.addEventListener('click', () => {
         const j = sel ? STAGES.findIndex(s => s.k === sel) : -1, d = +b.dataset.d; api.select(STAGES[(j + d + STAGES.length) % STAGES.length].k); }));
+      const more = on => { layer.classList.toggle('more', on); const m = layer.querySelector('.morebtn'); m.textContent = on ? 'LESS —' : 'MORE +'; m.setAttribute('aria-expanded', on); };
+      api.more = more;
+      layer.querySelector('.morebtn').addEventListener('click', () => more(!layer.classList.contains('more')));
+      rows.addEventListener('click', e => { if (isPhone() && e.target.closest('.body p')) more(!layer.classList.contains('more')); });
+      addEventListener('resize', () => api.select(sel));
       api.select(null);
     },
     select(k) {
       sel = k;
       const die = layer.querySelector('.die'); if (!die) return;
-      if (!k) die.style.transform = 'rotateX(34deg) rotateZ(-12deg)';
+      const phone = isPhone();
+      if (!k) die.style.transform = phone ? 'rotateX(22deg) rotateZ(-8deg)' : 'rotateX(34deg) rotateZ(-12deg)';
       else { const [cx, cy, s] = AZ[k], W = die.offsetWidth, H = die.offsetHeight;
-        die.style.transform = `rotateX(24deg) rotateZ(-6deg) scale(${s}) translate(${(-(cx / 1300 - .5) * W).toFixed(1)}px, ${(-(cy / 1000 - .5) * H).toFixed(1)}px)`; }
+        die.style.transform = `${phone ? 'rotateX(18deg) rotateZ(-4deg)' : 'rotateX(24deg) rotateZ(-6deg)'} scale(${s}) translate(${(-(cx / 1300 - .5) * W).toFixed(1)}px, ${(-(cy / 1000 - .5) * H).toFixed(1)}px)`; }
+      const j = STAGES.findIndex(s => s.k === k);
+      layer.classList.toggle('has-open', j >= 0); layer.querySelector('.prule').style.setProperty('--p', (j + 1) / STAGES.length);
+      if (api.more) api.more(false);
       layer.querySelectorAll('.st').forEach(g => g.classList.toggle('on', g.dataset.k === k));
       layer.querySelectorAll('.row').forEach(r => { const on = r.dataset.k === k; r.classList.toggle('open', on);
         r.querySelector('button').setAttribute('aria-expanded', on); r.querySelector('.pm').textContent = on ? '—' : '+'; });
@@ -349,7 +359,6 @@ export function makeA(ctx) {
     },
   };
   function onFrame(F) {
-    // the die itself is live: projection cells, block output cells, readout dials, trajectory curve, forecast error, tap marks
     cellsP.forEach((c, j) => c.setAttribute('fill', heat(F.proj[j >> 5][j & 31])));
     cellsB.forEach((c, j) => { const b = Math.floor(j / 64), r = j % 64; c.setAttribute('fill', heat(F.blk[b][r >> 5][r & 31])); });
     cellsR.forEach((c, j) => c.setAttribute('fill', cellFill(F.coef[j / 3 | 0][j % 3])));
@@ -360,26 +369,19 @@ export function makeA(ctx) {
     if (live) live(F);
   }
   const lvl = level('04 / MODEL · A ETCHED', layer, onFrame, api);
-  layer.addEventListener('pointerdown', e => { if (e.target.closest('.st, .panel, .circ, .pause')) return; if (sel) api.select(null); });   // click empty die: back to the overview
+  layer.addEventListener('pointerdown', e => { if (e.target.closest('.st, .panel, .circ, .pause')) return; if (sel) api.select(null); });
   return lvl;
 }
 
-// The pulse through the model (16 Nov, Nic's pick): the same light as the die level's 10 ms data path, carried on through k8.
-// It travels stop to stop: input, features, projection, block 1, 2, 3, readout, trajectory, forecast; each block glows while the
-// light is in it. Two lights, one per lane: the observed lane (top) and its mirrored twin (bottom, dimmer) run side by side through
-// the shared-weight blocks and merge at the readout. Legs are eased (speed up out of a block, slow into the next), with a comet tail
-// that stretches with speed. Illustrative timing: one sample's trip, slowed right down; the live values beside it run on their own.
 function modelPulse(svg) {
   const NS = 'http://www.w3.org/2000/svg', mk = (tag, a, p) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); (p || svg).append(e); return e; };
-  // route of the top lane (SVG units); stops carry the stage they light and how long the light waits there (s)
   const R = [
     { p: [105, 470], s: 'input', hold: .3 }, { p: [180, 470] }, { p: [215, 470], s: 'feat', hold: .35 }, { p: [250, 470] }, { p: [250, 380] },
     { p: [345, 380], s: 'proj', hold: .35 }, { p: [515, 380], s: 'b1', hold: .3 }, { p: [710, 380], s: 'b2', hold: .3 }, { p: [905, 380], s: 'b3', hold: .3 },
     { p: [1030, 380] }, { p: [1030, 470] }, { p: [1080, 470], s: 'head', hold: .45 }, { p: [1085, 470] }, { p: [1085, 690], s: 'traj', hold: .35 },
     { p: [1195, 690] }, { p: [1195, 500], s: 'out', hold: .6 },
   ];
-  const MERGE = R.findIndex(r => r.s === 'head');                  // the mirrored lane joins the top one at the readout
-  // the boxes that glow, per stage (both lanes where there are two)
+  const MERGE = R.findIndex(r => r.s === 'head');
   const BOX = { input: [[60, 430, 90, 140]], feat: [[180, 440, 70, 120]], proj: [[300, 340, 90, 80], [300, 580, 90, 80]],
     b1: [[440, 330, 150, 100], [440, 570, 150, 100]], b2: [[635, 330, 150, 100], [635, 570, 150, 100]], b3: [[830, 330, 150, 100], [830, 570, 150, 100]],
     head: [[1034, 424, 112, 148]], traj: [[1030, 640, 110, 100]], out: [[1150, 430, 90, 140]] };
@@ -389,7 +391,6 @@ function modelPulse(svg) {
   const lane = op => ({ tail: mk('path', { fill: 'none', stroke: '#dff140', 'stroke-width': 5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: .85 * op }, g),
     halo: mk('circle', { r: 18, fill: '#dff140', opacity: .6 * op, filter: 'url(#aGlow)' }, g), core: mk('circle', { r: 5.5, fill: '#ffffff', opacity: op }, g) });
   const top = lane(1), bot = lane(.55);
-  // distance along the route, eased legs between stops, holds at stops
   const cum = [0]; for (let i = 1; i < R.length; i++) cum.push(cum[i - 1] + Math.hypot(R[i].p[0] - R[i - 1].p[0], R[i].p[1] - R[i - 1].p[1]));
   const pointAt = d => { d = Math.max(0, Math.min(cum[cum.length - 1], d)); let i = 1; while (i < cum.length - 1 && cum[i] < d) i++;
     const f = cum[i] > cum[i - 1] ? (d - cum[i - 1]) / (cum[i] - cum[i - 1]) : 0, a = R[i - 1].p, b = R[i].p; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; };
@@ -443,30 +444,24 @@ function dieSVG() {
   <rect x="1030" y="640" width="110" height="100" fill="#151a13" stroke="#6c6e6b"/><text x="1030" y="770" font-size="14">TRAJECTORY</text>
   <rect x="1150" y="430" width="90" height="140" fill="#1b1d1f" stroke="#dff140"/><text x="1136" y="600" fill="#dff140">OUT +200 MS</text>
   <text id="aOut" x="1195" y="552" text-anchor="middle" font-size="22" fill="#f1f0ea">–</text>`);
-  // projection boxes: 32 live cells each (8 x 4), lane h0 top, h1 bottom
   for (const [l, y] of [[0, 340], [1, 580]]) { o.push(`<rect x="300" y="${y}" width="90" height="80" fill="#10130e" stroke="#6c6e6b"/>`);
     for (let c = 0; c < 32; c++) o.push(`<rect class="cp" x="${303 + (c % 8) * 10.6}" y="${y + 3 + (c >> 3) * 18.6}" width="9" height="16" fill="#111"/>`); }
-  // three blocks per lane: tap comb (spacing = dilation, drawn to scale within the box) + 32 live output cells
   ['BLOCK 1 · D1', 'BLOCK 2 · D8', 'BLOCK 3 · D47'].forEach((name, b) => {
     const x = 440 + b * 195; o.push(`<text x="${x}" y="312">${name}</text>`);
     for (const [l, y] of [[0, 330], [1, 570]]) {
       o.push(`<rect x="${x}" y="${y}" width="150" height="100" fill="#151a13" stroke="#6c6e6b"/>`);
-      const px = 130 / 329;   // ONE scale for all three blocks (130 px = Block 3's reach of 329 samples), so the dilation shows: 1 vs 8 vs 47
+      const px = 130 / 329;
       for (let j = 0; j < 8; j++) o.push(`<rect class="tap" x="${(x + 140 - j * [1, 8, 47][b] * px).toFixed(1)}" y="${y + 12}" width="3" height="30" fill="#dff140" opacity="${b === 0 ? .9 : .8}"/>`);
       o.push(`<line x1="${x + 10}" y1="${y + 44}" x2="${x + 142}" y2="${y + 44}" stroke="#505544"/>`);
       for (let c = 0; c < 32; c++) o.push(`<rect class="cb" x="${(x + 10 + c * 4.1).toFixed(1)}" y="${y + 56}" width="3.4" height="32" fill="#111"/>`);
     }
   });
-  // readout 3 x 3 live dials
   for (let a = 0; a < 3; a++) for (let p = 0; p < 3; p++) o.push(`<rect class="cr" x="${1040 + p * 30}" y="${430 + a * 46}" width="26" height="42" fill="#222" stroke="#2f3234"/>`);
-  // trajectory: three live curves
   o.push(`<path class="tj" fill="none" stroke="#dff140" stroke-width="2"/><path class="tj" fill="none" stroke="#b0b0a9" stroke-width="1.5"/><path class="tj" fill="none" stroke="#6c6e6b" stroke-width="1.5" stroke-dasharray="4 4"/>`);
   o.push(`</g><rect width="1300" height="1000" fill="url(#aSheen)" pointer-events="none"/></svg>`);
-  // the order of .cb cells is block 0 lane 0, block 0 lane 1, block 1 lane 0 ... (64 per block), which onFrame relies on
   return o.join('');
 }
 
-// ================================================================ B: the console
 const B_CSS = `
 #mvB { background: #010101 radial-gradient(circle, #1a1c1d 1px, transparent 1px) 0 0 / 24px 24px; }
 #mvB .bar { position: absolute; left: 40px; right: 40px; top: 66px; display: flex; gap: 26px; align-items: center; font-size: 12px; color: #b0b0a9; flex-wrap: wrap; }
@@ -516,8 +511,20 @@ const B_CSS = `
 #mvB .scrub input::-moz-range-thumb { width: 4px; height: 18px; background: #dff140; border: 0; border-radius: 0; }
 #mvB .scrub input:focus-visible { outline: 2px solid #dff140; outline-offset: 2px; }
 #mvB .scrub .stime { font: 11.5px GeistMono; letter-spacing: .05em; color: #b0b0a9; min-width: 128px; text-align: right; font-variant-numeric: tabular-nums; }
+/* phone portrait (21 Nov 2026): the detail panel is a bottom sheet; zoomed, the flow uses the space between the header and the sheet */
+html.phone #mvB .bar { left: 16px; right: 16px; top: 64px; gap: 4px 14px; font-size: 10px; }
+html.phone #mvB h1 { left: 16px; right: 16px; top: 122px; font-size: 26px; }
+html.phone #mvB h1 small { font-size: 13px; }
+html.phone #mvB .vp { left: 16px; right: 16px; top: 286px; bottom: 166px; }
+html.phone #mvB.zoomed .vp { top: 122px; }
+html.phone #mvB .detail { z-index: 2; left: 0; right: 0; top: auto; width: auto; height: 50%; padding: 18px 16px 76px; border-left: 0; border-top: 1px solid #2f3234; transform: translateY(100%); }
+html.phone #mvB.zoomed .detail { transform: none; }
+html.phone #mvB .detail .x { top: 10px; right: 12px; width: 44px; height: 44px; }
+html.phone #mvB .detail h2 { font-size: 24px; margin-right: 56px; } html.phone #mvB .detail p { font-size: 15px; }
+html.phone #mvB .scrub { left: 16px; right: 16px; bottom: 112px; gap: 10px; }
+html.phone #mvB .scrub .sbtn { width: 44px; height: 44px; } html.phone #mvB .scrub .stime { min-width: 0; font-size: 10px; }
+html.phone #mvB .tick { bottom: 66px; padding-left: 16px; }
 `;
-// node layout in the flow's own 1360 x 470 space
 const BN = { input: [0, 120, 150], feat: [195, 20, 190], mirror: [195, 300, 190], proj: [430, 120, 175], blocks: [650, 40, 270], head: [965, 20, 160], traj: [965, 270, 160], out: [1170, 120, 190] };
 const BW = [['input', 'feat'], ['input', 'mirror'], ['feat', 'proj'], ['mirror', 'proj'], ['proj', 'blocks'], ['blocks', 'head'], ['blocks', 'traj'], ['head', 'out'], ['traj', 'out']];
 export function makeB(ctx) {
@@ -525,7 +532,6 @@ export function makeB(ctx) {
   const layer = document.createElement('div'); layer.className = 'mv'; layer.id = 'mvB';
   let sel = null, lives = [], detailLive = null, hdr = {}, tickEl = null, fit = 1, scrub = null, scrubTime = null, scrubBtn = null;
   const api = {
-    // play / pause from any control (the pause button, space, the scrub bar): the header, the wire pulses and the scrub button follow
     onPlaying(p) {
       layer.classList.toggle('paused', !p); const live = layer.querySelector('.bar .live');
       if (live) { live.classList.toggle('off', !p); live.textContent = p ? 'LIVE · QUARTER SPEED' : 'PAUSED'; }
@@ -539,8 +545,6 @@ export function makeB(ctx) {
         <div class="scrub"><button type="button" class="sbtn" aria-label="Pause">❚❚</button><input type="range" step="1" aria-label="Position in the test clip"><span class="stime mono"></span></div>
         <div class="tick"></div>`;
       layer.querySelectorAll('[data-h]').forEach(b => hdr[b.dataset.h] = b);
-      // the scrub bar (16 Nov, Nic: "scrub the test clip in console view"): drag to any moment of the 12 s clip; dragging pauses it,
-      // and every number in the console jumps to that moment. The button plays / pauses; while playing, the slider follows the clip.
       scrub = layer.querySelector('.scrub input'); scrubTime = layer.querySelector('.stime'); scrubBtn = layer.querySelector('.sbtn');
       const c = lvl.clip; scrub.min = c.first; scrub.max = c.last; scrub.value = c.first;
       scrub.addEventListener('input', () => { if (lvl.clip.playing) lvl.setPlaying(false); lvl.seek(+scrub.value); });
@@ -553,9 +557,8 @@ export function makeB(ctx) {
         b.innerHTML = `<div class="hd"><span>${s.n}</span><span>${s.short.split('\n')[0]}</span></div><div class="wg"></div>`;
         b.addEventListener('click', () => api.select(sel === s.k ? null : s.k));
         flow.append(b);
-        const wg = b.querySelector('.wg'); lives.push(s.k === 'mirror' ? miniMirror(wg) : widget(s.k, wg));   // the mirror node is too small for 14 bars
+        const wg = b.querySelector('.wg'); lives.push(s.k === 'mirror' ? miniMirror(wg) : widget(s.k, wg));
       }
-      // wires from node edge to node edge (offsets ignore CSS transforms, so they are computed in the flow's own space)
       const svg = flow.querySelector('.wires'), at = k => flow.querySelector(`.node[data-k="${k}"]`);
       for (const [a, b] of BW) { const A = at(a), B = at(b), x0 = A.offsetLeft + A.offsetWidth, y0 = A.offsetTop + A.offsetHeight / 2, x1 = B.offsetLeft, y1 = B.offsetTop + B.offsetHeight / 2, mx = (x0 + x1) / 2;
         const d = `M${x0} ${y0} H${mx} V${y1} H${x1}`; svg.insertAdjacentHTML('beforeend', `<path class="w0" d="${d}"/><path class="wp" pathLength="100" d="${d}"/>`); }
@@ -565,14 +568,14 @@ export function makeB(ctx) {
     },
     select(k) {
       sel = k; const flow = layer.querySelector('.flow'), vp = layer.querySelector('.vp'); if (!flow) return;
-      const W = vp.clientWidth, H = vp.clientHeight; fit = Math.min(1, W / 1360, H / 470);
       layer.classList.toggle('zoomed', !!k); layer.querySelector('h1').style.opacity = k ? .15 : 1;
+      const W = vp.clientWidth, H = vp.clientHeight; fit = Math.min(1, W / 1360, H / 470);
       layer.querySelectorAll('.node').forEach(n => n.classList.toggle('on', n.dataset.k === k));
       if (!k) { flow.style.transform = `translate(${((W - 1360 * fit) / 2).toFixed(0)}px, 0) scale(${fit})`; detailLive = null; ctx.setZoomed(false); return; }
-      // zoom: scale the flow so the chosen node is big, centred in the space left of the detail panel
-      const n = flow.querySelector(`.node[data-k="${k}"]`), panel = layer.querySelector('.detail').offsetWidth, room = W - panel + 40;
-      const s = Math.min(2.2, (room * .55) / n.offsetWidth, (H * .9) / n.offsetHeight), cx = n.offsetLeft + n.offsetWidth / 2, cy = n.offsetTop + n.offsetHeight / 2;
-      flow.style.transform = `translate(${(room / 2 - cx * s).toFixed(0)}px, ${(H / 2 - cy * s).toFixed(0)}px) scale(${s.toFixed(3)})`;
+      const n = flow.querySelector(`.node[data-k="${k}"]`), det = layer.querySelector('.detail'), phone = isPhone();
+      const room = phone ? W : W - det.offsetWidth + 40, Hv = phone ? Math.max(80, det.offsetTop - vp.offsetTop) : H;
+      const s = Math.min(2.2, (room * (phone ? .8 : .55)) / n.offsetWidth, (Hv * .9) / n.offsetHeight), cx = n.offsetLeft + n.offsetWidth / 2, cy = n.offsetTop + n.offsetHeight / 2;
+      flow.style.transform = `translate(${(room / 2 - cx * s).toFixed(0)}px, ${(Hv / 2 - cy * s).toFixed(0)}px) scale(${s.toFixed(3)})`;
       const st = byK[k], d = layer.querySelector('.detail');
       d.querySelector('.k').textContent = st.n + ' · ' + st.short.replace('\n', ' · ');
       d.querySelector('h2').textContent = st.title; d.querySelector('p').textContent = st.text;
@@ -592,7 +595,6 @@ export function makeB(ctx) {
   const lvl = level('04 / MODEL · B CONSOLE', layer, onFrame, api);
   return lvl;
 }
-// the mirror node's compact view: just the three flipped measurements, observed vs mirrored
 function miniMirror(el) {
   el.classList.add('w'); el.innerHTML = [1, 2, 4].map(j => `<div class="rw">${FEAT[j]} <b data-j="${j}"></b></div>`).join('') + '<div class="rw dim">OBSERVED → MIRRORED</div>';
   const bs = [...el.querySelectorAll('b')];

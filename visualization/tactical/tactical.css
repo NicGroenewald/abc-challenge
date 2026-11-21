@@ -1,51 +1,38 @@
-/* tactical.css: the Anduril-style theme for the tactical page (16 Nov 2026), loaded after story.css so it only overrides.
- * Colours only for the story's own sections (their type, shapes and scroll behaviour stay exactly as story.css has them):
- * near-black #010101, bone #f1f0ea, one accent, acid yellow #dff140 (it replaces story.css's blue everywhere: prediction, the
- * model, active states), greys from the same family.
- * Also the TAKE CONTROL section (#s-model .tc), which replaces the model deck (tc.js, journey/journey.html).
- */
 
-/* ---------------------------------------------------------------- 1. tokens */
 html.story, html.story body { background:#010101; }
 #story {
   --bg:#010101;
   --glass:6,7,8;
-  --ink:#f1f0ea;            /* headlines and figures: bone */
-  --body:#b0b0a9;           /* running text */
-  --quiet:#8e9291;          /* labels, captions (6:1 on the page: readable at label size) */
+  --ink:#f1f0ea;
+  --body:#b0b0a9;
+  --quiet:#8e9291;
   --rule:#1c1f22;
   --line:#2f3234;
   --line-hi:#565654;
-  --blue:#dff140;           /* THE accent (name kept so every story.css rule that uses it follows) */
-  --go:#f1f0ea; --go-hi:#dff140; --go-ink:#010101;   /* the primary button: bone, acid on hover, black text */
+  --blue:#dff140;
+  --go:#f1f0ea; --go-hi:#dff140; --go-ink:#010101;
   background:var(--bg);
 }
 #story ::selection { background:rgba(223,241,64,.28); color:#f1f0ea; }
 .pn-answer { border-color:rgba(223,241,64,.45); }
 html.st-motion .pn-answer { background:rgba(223,241,64,.03); }
 
-/* ---------------------------------------------------------------- 2. colours only on the story's own parts (16 Nov: Nic, "keep the
-   story's scroll interactive parts, just change the colour theme"). No type, size, shape or layout changes here: story.css decides those. */
-.st-kicker::before { background:var(--blue); }   /* the small corner mark, in the accent */
+.st-kicker::before { background:var(--blue); }
 .st-top { background:rgba(1,1,1,.72); }
 .st-top nav a.st-cta { border-color:var(--go); }
 .st-top nav a.st-cta:hover { color:var(--go-ink); }
-/* 21 Nov 2026: the GitHub link beside the button, to the team repo (Motion-Pending/motion-pending.github.io). Icon only, so it carries an
-   aria-label; a 40 px square to hit, shown at every width (story.css hides the other nav links on a phone). */
 .st-top nav a.st-gh { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; padding:0; margin:0 -6px;
   color:var(--quiet); border-radius:6px; }
 .st-top nav a.st-gh:hover { color:var(--ink); }
 .st-top nav a.st-gh:focus-visible { outline:1px solid var(--ink); outline-offset:2px; }
+@media (pointer: coarse) { .st-top nav a.st-gh { width:44px; height:44px; margin:0 -8px; } }
 .dk-panel { border-color:rgba(241,240,234, calc(.1 + .1 * var(--k, 1))); }
 
-/* ---------------------------------------------------------------- 3. TAKE CONTROL (Part 2 · the model)
-   Layers, back to front: the giant type (z 0) · the iframe with the live head on a see-through background (z 1) · labels, copy and
-   the Launch button (z 2). html.tc-open (tc.js): the iframe fills the window above everything and the page stops scrolling. */
 .tc { position:relative; height:100svh; min-height:620px; overflow:hidden; background:#010101; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
 .tc-anchor { position:absolute; top:0; }
 #story .tc-type { position:absolute; left:0; right:0; top:22%; z-index:0; margin:0; max-width:none; text-align:center; pointer-events:none; user-select:none; -webkit-user-select:none;
-  font:600 clamp(64px, 11.2vw, 200px)/.9 var(--sans); letter-spacing:-.045em; color:var(--ink); white-space:nowrap; }
-.tc-poster { position:absolute; left:50%; top:52%; width:min(62vw, 980px); transform:translate(-50%, -50%); z-index:1; opacity:0; pointer-events:none; }
+  font:600 clamp(min(64px, 13vw), 11.2vw, 200px)/.9 var(--sans); letter-spacing:-.045em; color:var(--ink); white-space:nowrap; }
+.tc-poster { position:absolute; left:50%; top:52%; width:min(62vw, 980px); height:auto; transform:translate(-50%, -50%); z-index:1; opacity:0; pointer-events:none; }
 .tc-nolive .tc-poster { opacity:1; }
 .tc-frame { position:absolute; inset:0; width:100%; height:100%; border:0; z-index:1; pointer-events:none; background:transparent; color-scheme:normal; opacity:0; transition:opacity .8s; }
 .tc-live .tc-frame { opacity:1; }
@@ -58,7 +45,6 @@ html.st-motion .pn-answer { background:rgba(223,241,64,.03); }
 .tc-copy { position:absolute; left:clamp(20px, 4vw, 56px); bottom:12%; max-width:min(440px, 40vw); }
 .tc-lead { margin:0; font:400 clamp(20px, 1.7vw, 26px)/1.18 var(--sans); letter-spacing:-.01em; color:var(--ink); }
 .tc-sum { margin:18px 0 0; font-size:14.5px; line-height:1.5; color:var(--quiet); }
-/* all:unset also resets pointer-events, so without the explicit auto the button inherited .tc-ui's "none" and real clicks fell through */
 .tc-launch { all:unset; pointer-events:auto; position:absolute; right:clamp(20px, 4vw, 56px); bottom:12%; background:var(--go); color:var(--go-ink); padding:20px 38px; font:400 17px var(--sans);
   cursor:pointer; transition:background .2s; }
 .tc-launch:hover { background:var(--go-hi); }
@@ -66,11 +52,7 @@ html.st-motion .pn-answer { background:rgba(223,241,64,.03); }
 .tc-launch[aria-busy="true"] { opacity:.7; cursor:progress; }
 html.tc-open, html.tc-open body { overflow:hidden !important; }
 html.tc-open .tc-frame { position:fixed; inset:0; z-index:1000; pointer-events:auto; opacity:1; }
-/* Launch: everything moves OUT of the frame, as if the camera pushes in past it (Nic, 16 Nov: "move out the way, not disappear"):
-   the corner labels to their corners, the copy off to the left, the button off to the right, the type grows and lifts away.
-   .65 s, so it is gone before the journey's canvas turns opaque (journey.js launch, 650 ms). Closing plays it backwards. */
 .tc-l, .tc-r, .tc-copy, .tc-launch, #story .tc-type { transition:transform .65s cubic-bezier(.65,0,.35,1), opacity .65s ease; }
-/* going out: stay solid while moving, fade only at the end (.35 s delay), so it reads as motion, not a fade */
 html.tc-open .tc-l, html.tc-open .tc-r, html.tc-open .tc-copy, html.tc-open #story .tc-type { transition:transform .65s cubic-bezier(.65,0,.35,1), opacity .3s ease .35s; }
 html.tc-open .tc-launch { transition:transform .65s cubic-bezier(.65,0,.35,1), opacity .3s ease .35s, background .2s; }
 html.tc-open .tc-l { transform:translate(-14vw, -12vh); opacity:0; }
@@ -81,16 +63,45 @@ html.tc-open #story .tc-type { transform:translateY(-18vh) scale(1.35); opacity:
 .tc-launch { transition:transform .65s cubic-bezier(.65,0,.35,1), opacity .65s ease, background .2s; }
 .st-top { transition:transform .5s cubic-bezier(.65,0,.35,1); }
 @media (prefers-reduced-motion: reduce) { .tc-l, .tc-r, .tc-copy, .tc-launch, #story .tc-type { transition:opacity .3s ease; } }
-html.tc-open .st-top { transform:translateY(-100%); }   /* the bar slides up out of the frame too */
+html.tc-open .st-top { transform:translateY(-100%); }
 @media (prefers-reduced-motion: reduce) { .tc-blink { animation:none; } }
 @media (max-width: 760px) {
   .tc-r { display:none; }
   .tc-copy { bottom:auto; top:58%; max-width:none; right:20px; }
   .tc-launch { left:20px; right:20px; bottom:6%; text-align:center; }
 }
+@media (max-width: 768px) and (orientation: portrait) {
+  .tc { height:calc(100svh - var(--bar)); min-height:540px; }
+  html.story #story .tc { scroll-margin-top:var(--bar); }
+  #story .tc-type { top:64px; }
+  .tc-l { top:18px; font-size:13px; }
+  html:not(.tc-open) .tc-frame { height:56%; }
+  .tc-poster { top:30%; width:92vw; }
+  .tc-ui { display:flex; flex-direction:column; justify-content:flex-end; gap:22px; padding:0 20px 20px; }
+  .tc-copy, .tc-launch { position:static; max-width:none; }
+  .tc-lead { font-size:20px; }
+}
+@media (max-width: 768px) and (orientation: portrait) and (max-height: 700px) {
+  .tc { min-height:0; }
+  html:not(.tc-open) .tc-frame { height:50%; }
+  .tc-ui { gap:14px; padding-bottom:16px; }
+  .tc-lead { font-size:18px; }
+  .tc-sum { margin-top:10px; font-size:13.5px; }
+  .tc-launch { padding-top:15px; padding-bottom:15px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .tc { height:calc(100svh - var(--bar)); min-height:0; }
+  html.story #story .tc { scroll-margin-top:var(--bar); }
+  #story .tc-type { top:24%; font-size:min(15vh, 9vw); }
+  .tc-l { top:14px; font-size:12px; } .tc-r { display:none; }
+  .tc-copy { top:auto; bottom:18px; right:auto; max-width:min(360px, 40vw); }
+  .tc-lead { font-size:18px; }
+  .tc-sum { display:none; }
+  .tc-launch { left:auto; right:clamp(20px, 4vw, 56px); bottom:18px; padding:14px 26px; }
+}
+.st-top nav a.st-cta { white-space:nowrap; }
+@media (max-width: 380px) { .st-top nav a.st-cta { padding-left:10px; padding-right:10px; } }
 
-/* ---------------------------------------------------------------- 4. "Explore it yourself" (#s-explore3d, above the team, 16 Nov)
-   Three numbered rows, Anduril-style: hairlines, big type, a tag on the right, an arrow that turns acid and slides on hover. */
 #story .xp h2 { margin-bottom:28px; }
 .xp-list { list-style:none; margin:0; padding:0; border-top:1px solid var(--line); }
 .xp-list li { border-bottom:1px solid var(--line); }
@@ -108,11 +119,6 @@ html.tc-open .st-top { transform:translateY(-100%); }   /* the bar slides up out
 @media (prefers-reduced-motion: reduce) { .xp-go { transition:none; } }
 @media (max-width: 760px) { .xp-row { grid-template-columns:40px 1fr 24px; } .xp-tag { display:none; } }
 
-/* ---------------------------------------------------------------- 5. the 3D spaces (?explore=1: the model viewer; &side=data: the data
-   pipeline) in the same palette (16 Nov, Nic: "make those match the theme"). The viewer and dataview.css take their colours from these
-   variables (index.html :root), so overriding them themes both. html:not(.story) = the page opened as the viewer, not the story.
-   --blue was the viewer's highlight colour (focus rings, the prediction); it becomes the acid accent, as on the story. The data colours
-   (violet taps, green, amber) keep their meanings. */
 html:not(.story) {
   --bg:#010101; --panel:rgba(1,1,1,.86); --panel-solid:rgba(1,1,1,.96); --line:#2f3234; --divider:#1c1f22;
   --fg:#f1f0ea; --body:#b0b0a9; --muted:#8e9291;
@@ -123,10 +129,7 @@ html:not(.story) {
 }
 html:not(.story) .hud { border-radius:2px; }
 html:not(.story) ::selection { background:rgba(223,241,64,.28); color:#f1f0ea; }
-/* the primary button (Next / Back to the story): bone, acid on hover, black text both ways (the viewer's own hover text is white) */
 html:not(.story) #next:hover:not(:disabled), html:not(.story) #storyBack:hover:not(:disabled) { color:var(--go-ink); border-color:var(--go-hi); }
-/* 21 Nov 2026: the team cards' LinkedIn links (a text link, so its name is its words; the arrow marks a new tab) and the
-   paper's "Coming soon" line. */
 .tm-card .tm-links { display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:14px; }
 .tm-card .tm-link { align-self:flex-start; padding:4px 0; color:var(--quiet); font:400 11.5px/1.6 var(--mono);
   letter-spacing:.1em; text-transform:uppercase; text-decoration:none; border-bottom:1px solid var(--line); }
@@ -134,8 +137,5 @@ html:not(.story) #next:hover:not(:disabled), html:not(.story) #storyBack:hover:n
 .tm-card .tm-link:hover { color:var(--ink); border-bottom-color:var(--ink); }
 .tm-card .tm-link:focus-visible { outline:1px solid var(--ink); outline-offset:3px; }
 .st-paper .pp-soon { color:var(--ink); font-size:1.5em; font-weight:500; letter-spacing:-.01em; }
-/* a member card without a link keeps an empty space of the link's height, so every role line sits at the same height */
 .tm-card:has(.tm-role):not(:has(.tm-links))::after { content:""; display:block; height:calc(14px + 8px + 11.5px * 1.6 + 1px); }
-/* 21 Nov 2026: the bar's subtitle ("· Head-pose forecasting · 9th ABC Challenge") only fits beside the chapter links on a wide
-   screen; below 1080 px it was pushing the bar wider than the window (sideways scroll), so there the team name stands alone. */
 @media (max-width: 1080px) { .st-top .st-name .st-sub { display:none; } }

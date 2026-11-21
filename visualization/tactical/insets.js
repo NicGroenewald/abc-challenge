@@ -1,27 +1,20 @@
-// Round 2: per-step inset renderers and the model maths they need, as plain functions of the adapted trace D.
-// Loaded as a classic script before the page module (window.K8I), and by node for the smoke test (globalThis.K8I).
-// Every number comes from D.frames (recorded trace) or D.W (dumped weights); nothing here is fitted or invented.
 (function (root) {
   const K = {};
   const DIL = [1, 8, 47], SIGNS = [1, -1, -1, 1, -1, 1, 1], H = 20, TAU = 10, NP = 400;
-  const ELAPSED = Array.from({ length: H }, (_, i) => -TAU * Math.expm1(-(i + 1) / TAU) / 100);   // best/export.py:105-106
+  const ELAPSED = Array.from({ length: H }, (_, i) => -TAU * Math.expm1(-(i + 1) / TAU) / 100);
   const FEAT = ['ωx', 'ωy', 'ωz', 'speed', 'gx', 'gy', 'gz'];
   Object.assign(K, { DIL, SIGNS, H, TAU, NP, ELAPSED, FEAT });
 
-  // ---------------------------------------------------------------- colour: one diverging ramp for the 3D cells and the insets
-  // orange = +, blue = −. u = √(|v| / scale), clipped. Dark near zero, saturated at u = .8, pale at the clip (more luminance range than round 1).
   const C0 = [18, 26, 39], PS = [255, 159, 46], PP = [255, 228, 190], NS = [47, 140, 255], NQ = [210, 230, 255];
   const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
   K.ramp = t => { t = Math.max(-1, Math.min(1, t || 0)); const u = Math.sqrt(Math.abs(t)), s = t < 0 ? NS : PS, p = t < 0 ? NQ : PP;
     return (u < .8 ? mix(C0, s, u / .8) : mix(s, p, (u - .8) / .2)).map(v => v / 255); };
-  // round 6 (perf rank 8): the same ramp written into a reused 3-array, no allocation; arithmetic identical to mix(), so the floats are bit-equal
   K.ramp3 = (t, out) => { t = Math.max(-1, Math.min(1, t || 0)); const u = Math.sqrt(Math.abs(t)), s = t < 0 ? NS : PS, p = t < 0 ? NQ : PP;
     const a = u < .8 ? C0 : s, b = u < .8 ? s : p, w = u < .8 ? u / .8 : (u - .8) / .2;
     out[0] = (a[0] + (b[0] - a[0]) * w) / 255; out[1] = (a[1] + (b[1] - a[1]) * w) / 255; out[2] = (a[2] + (b[2] - a[2]) * w) / 255; return out; };
   K.hex = rgb => '#' + rgb.map(v => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0')).join('');
   K.divHex = (v, s) => v === null || v === undefined ? '#0c1018' : K.hex(K.ramp(v / (s || 1)));
 
-  // ---------------------------------------------------------------- model maths (same code the page uses for its 3D)
   K.blockIn = (D, b, i) => { if (i < 0) return null; const f = D.frames[i]; return f ? (b === 0 ? f.proj : f.blk[b - 1]) : null; };
   K.depthwise = (D, b, i) => { const o = [new Array(32).fill(0), new Array(32).fill(0)], w = D.W.dw[b], d = DIL[b];
     for (let j = 0; j < 8; j++) { const x = K.blockIn(D, b, i - (7 - j) * d); if (!x) continue; for (let s = 0; s < 2; s++) for (let c = 0; c < 32; c++) o[s][c] += w[c][j] * x[s][c]; }
@@ -31,65 +24,53 @@
     return o; };
   K.conjMul = (p, q) => { const [a, b, c, d] = [p[0], -p[1], -p[2], -p[3]], [w, x, y, z] = q;
     return [a * w - b * x - c * y - d * z, a * x + b * w + c * z - d * y, a * y - b * z + c * w + d * x, a * z + b * y - c * x + d * w]; };
-  // angle between two rotations in degrees (normalise first: the trace is rounded to 4 decimals)
   K.geo = (a, b) => { const na = Math.hypot(...a), nb = Math.hypot(...b), [p, q, r, t] = a.map(x => x / na), [w, x, y, z] = b.map(v => v / nb);
     const dw = p * w + q * x + r * y + t * z, dx = p * x - q * w - r * z + t * y, dy = p * y + q * z - r * w - t * x, dz = p * z - q * y + r * x - t * w;
     return 360 / Math.PI * Math.atan2(Math.hypot(dx, dy, dz), Math.abs(dw)); };
-  K.fwd = q => { const [w, x, y, z] = q; return [2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)]; };   // R(q)·(0,0,1), recording frame
-  // features of the newest pair, spelled out (best/export.py:122-134; same formula as adapter.js)
+  K.fwd = q => { const [w, x, y, z] = q; return [2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)]; };
   K.featDetail = (D, i) => { const g = D.frames[i - 1], f = D.frames[i]; if (!g || !f) return null;
     const q0 = g.q, q1 = f.q, d = K.conjMul(q0, q1), om = [1, 2, 3].map(k => 200 * d[0] * d[k]), sp = Math.abs(om[0]) + Math.abs(om[1]) + Math.abs(om[2]);
     const [w, x, y, z] = q1, gv = [2 * (x * y + w * z), w * w - x * x + y * y - z * z, 2 * (y * z - w * x)], mine = [...om, sp, ...gv];
     return { q0, q1, d, om, sp, g: gv, trace: f.feat, diff: f.feat ? Math.max(...mine.map((v, k) => Math.abs(v - f.feat[k]))) : null }; };
-  // one projection channel: 7 weights × the stream's 7 features + bias = pre-ReLU, then ReLU (compare with the recorded proj)
   K.projDetail = (D, i, s, o) => { const f = D.frames[i]; if (!f || !f.feat) return null;
     const terms = f.feat.map((v, k) => { const x = v * (s ? SIGNS[k] : 1), w = D.W.proj[o][k]; return { w, x, p: w * x }; });
     const bias = D.W.projB[o], pre = bias + terms.reduce((a, t) => a + t.p, 0);
     return { terms, bias, pre, post: Math.max(0, pre), check: f.proj ? f.proj[s][o] : null }; };
-  // one depthwise channel: h[s][c] = Σ_j dw[b][c][j] · in(t − (7−j)·d)[s][c]
   K.channel = (D, b, c, s, i) => { const w = D.W.dw[b][c], d = DIL[b]; let sum = 0;
     const terms = w.map((wj, j) => { const x = K.blockIn(D, b, i - (7 - j) * d), v = x ? x[s][c] : null, p = v === null ? 0 : wj * v; sum += p; return { lag: (7 - j) * d, w: wj, x: v, p, run: sum }; });
     return { terms, sum, check: K.depthwise(D, b, i)[s][c] }; };
-  // one readout coefficient c[p][a] = Σ_c W[r][c]·h⁰[c] + S_a·Σ_c W[r][c]·h¹[c] + b_x[p]·[a = x], r = 3p + a (export.py:157-159)
   K.headDetail = (D, i, p, a, bx) => { const f = D.frames[i]; if (!f || !f.blk[2]) return null; const r = 3 * p + a, Wr = D.W.head[r], sg = a > 0 ? -1 : 1;
     const h0 = Wr.map((w, c) => w * f.blk[2][0][c]), h1 = Wr.map((w, c) => sg * w * f.blk[2][1][c]), s0 = h0.reduce((x, y) => x + y, 0), s1 = h1.reduce((x, y) => x + y, 0);
     const bias = a === 0 && bx ? bx[p] : 0;
     return { r, sg, h0, h1, s0, s1, bias, sum: s0 + s1 + bias, check: f.coef ? f.coef[p][a] : null }; };
-  // 6.2: lag = a + 8b + 47c (every root-to-leaf path of the receptive-field tree)
   K.COVER = (() => { const n = new Array(393).fill(0); for (let a = 0; a < 8; a++) for (let b = 0; b < 8; b++) for (let c = 0; c < 8; c++) n[a + DIL[1] * b + DIL[2] * c]++;
     return { n, paths: 512, distinct: n.filter(v => v > 0).length, twice: n.filter(v => v === 2).length, gaps: n.filter(v => v === 0).length, max: Math.max(...n) }; })();
 
-  // ---------------------------------------------------------------- svg helpers
   const fmt = (v, n = 3) => v === null || v === undefined || !isFinite(v) ? '–' : (v < 0 ? '−' : '') + Math.abs(v).toFixed(n);
   const f1 = (v, n = 1) => fmt(v, n);
   const pathOf = pts => { let s = '', pen = false;
     for (const p of pts) { if (!p || !isFinite(p[0]) || !isFinite(p[1])) { pen = false; continue; } s += `${pen ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`; pen = true; } return s; };
-  // viz-look P1: one text size floor for every figure. Axis and row text was 8.5 to 9.5 px in a 278-wide drawing, too small once the
-  // drawing is shown at half size on the lite page; nothing is drawn below 10 now, and the heatmap rows are 11 high to fit it.
   const T = (x, y, t, fill = '#808080', size = 10, anchor = 'start') => `<text x="${x}" y="${y}" fill="${fill}" font-size="${Math.max(10, size)}" text-anchor="${anchor}">${t}</text>`;
-  // the same time axis under every 4 s chart: a tick label at −4 s, −3 s, −2 s, −1 s and now (X maps a lag in samples to x)
   const timeAxis = (X, y) => [[399, '−4 s', 'start'], [300, '−3 s', 'middle'], [200, '−2 s', 'middle'], [100, '−1 s', 'middle'], [0, 'now', 'end']].map(([lag, t, a]) => T(X(lag), y, t, lag ? '#808080' : '#eaeaea', 10, a)).join('');
   const clip = (v, m) => Math.max(-m, Math.min(m, v));
-  const tabs = (name, list, cur) => `<div class="tabs" role="tablist">${list.map(([k, t]) => `<button class="tab${k === cur ? ' on' : ''}" role="tab" aria-selected="${k === cur}" data-act="${name}:${k}">${t}</button>`).join('')}</div>`;   // round 8 (a11y F19)
-  // a transparent overlay for hover (data-hx) or a grid click (data-grid); the page maps the pointer to an index
+  const tabs = (name, list, cur) => `<div class="tabs" role="tablist">${list.map(([k, t]) => `<button class="tab${k === cur ? ' on' : ''}" role="tab" aria-selected="${k === cur}" data-act="${name}:${k}">${t}</button>`).join('')}</div>`;
   const hoverRect = (kind, n, x, y, w, h, rev = 0, off = 0) => `<rect data-hx="${kind}" data-n="${n}" data-rev="${rev}" data-off="${off}" x="${x}" y="${y}" width="${w}" height="${h}" fill="transparent" style="cursor:crosshair"/>`;
   const gridRect = (name, rows, cols, x, y, w, h) => `<rect data-grid="${name}" data-rows="${rows}" data-cols="${cols}" x="${x}" y="${y}" width="${w}" height="${h}" fill="transparent" style="cursor:pointer"/>`;
   const heat = (M, x0, y0, cw, ch, sc) => { let s = ''; M.forEach((row, r) => row.forEach((v, c) => { s += `<rect x="${(x0 + c * cw).toFixed(2)}" y="${(y0 + r * ch).toFixed(2)}" width="${(cw - .4).toFixed(2)}" height="${(ch - .4).toFixed(2)}" fill="${K.divHex(v, sc)}"/>`; })); return s; };
   const CACHE = new Map();
   const cached = (D, key, fn) => { const c = CACHE.get(key); if (c && c.D === D) return c.v; const v = fn(); CACHE.set(key, { D, v }); return v; };
   const maxAbs = a => Math.max(1e-9, ...a.map(Math.abs));
-  const QC = ['#e6ebf2', '#ff7a8a', '#5fd38d', '#7fb2ff'];     // w x y z series (categorical, not the ± ramp)
+  const QC = ['#e6ebf2', '#ff7a8a', '#5fd38d', '#7fb2ff'];
   const legendRamp = (sc, unit = '') => `<span class="ramp"><i style="background:${K.divHex(-sc, sc)}"></i><i style="background:${K.divHex(-sc * .2, sc)}"></i><i style="background:${K.divHex(0, sc)}"></i><i style="background:${K.divHex(sc * .2, sc)}"></i><i style="background:${K.divHex(sc, sc)}"></i></span> −${fmt(sc, 2)} … +${fmt(sc, 2)}${unit}`;
   K.fmt = fmt;
 
   const R = {};
-  // ---------------------------------------------------------------- (1) Input: w x y z over the last 400 samples; hover = a time column
   R.input = c => {
     const { D, idx, U } = c, w = 278, L = 18, Rv = 98, rh = 26, pw = w - L - Rv, fr = lag => D.frames[idx - lag];
     if (!fr(0)) return '';
     const sel = U.hov !== null && U.hov !== undefined && U.hov > 0 && fr(U.hov) ? U.hov : 0, q = fr(sel).q, X = lag => L + (NP - 1 - lag) / (NP - 1) * pw;
     let g = '';
-    ['w', 'x', 'y', 'z'].forEach((nm, r) => {         // one row per component, each zoomed to its own range over this window (labelled)
+    ['w', 'x', 'y', 'z'].forEach((nm, r) => {
       let lo = Infinity, hi = -Infinity; for (let lag = 0; lag < NP; lag++) { const h = fr(lag); if (h) { lo = Math.min(lo, h.q[r]); hi = Math.max(hi, h.q[r]); } }
       const pad = Math.max(.005, (hi - lo) * .1), a = lo - pad, z = hi + pad, y0 = r * rh, Y = v => y0 + 2 + (z - v) / (z - a) * (rh - 5);
       g += `<rect x="${L}" y="${y0}" width="${pw}" height="${rh - 1}" rx="3" fill="${r % 2 ? '#0f0f0f' : '#151515'}"/>` + T(3, y0 + 14, nm, QC[r], 10.5);
@@ -106,7 +87,6 @@
       <div class="m" title="unit quaternion: w = cos(θ/2), (x, y, z) = sin(θ/2)·n">hover to go back in time · each row is zoomed to its own range (right: min … max, then the value)</div>`;
   };
 
-  // ---------------------------------------------------------------- (2) Features: 7 small multiples over 4 s, a pickable row, the newest pair spelled out
   R.feat = c => {
     const { D, idx, U, S } = c, w = 278, L = 38, Rv = 46, rh = 18, pw = w - L - Rv, fr = lag => D.frames[idx - lag], f = fr(0);
     if (!f || !f.feat) return '';
@@ -137,7 +117,6 @@
       <div class="m" title="ω rows share one scale, speed has its own (both clipped at the 98th pct); g fixed ±1">click a row for its value · <span style="color:#ffcf6e">*</span> flipped in h¹ · ω and speed ≈ rad/s, g has no unit</div>${pick}${ex}`;
   };
 
-  // ---------------------------------------------------------------- (3) Projection: W [32×7] (+ bias) heatmap, one channel broken down
   R.proj = c => {
     const { D, idx, U } = c, w = 278, L = 36, cw = (w - L) / 32, ch = 11, f = D.frames[idx];
     const M = FEAT.map((_, k) => D.W.proj.map(row => row[k])), sc = maxAbs([...D.W.proj.flat(), ...D.W.projB]);
@@ -158,7 +137,6 @@
     return `<h3>Projection: one 7→32 weight matrix</h3><svg width="${w}" height="${8 * ch + 18}" role="img" aria-label="projection weights, 7 features by 32 channels, plus bias">${g}</svg>${body}`;
   };
 
-  // ---------------------------------------------------------------- (4) Mirror swap: the 7 features of h⁰ and h¹, live
   R.mirror = c => {
     const { D, idx, U } = c, f = D.frames[idx]; if (!f || !f.feat) return '';
     const top = U.swapped ? f.feat.map((v, k) => v * SIGNS[k]) : f.feat, bot = U.swapped ? f.feat : f.feat.map((v, k) => v * SIGNS[k]);
@@ -168,7 +146,6 @@
       <div class="m">${U.swapped ? 'mirrored motion: its features are S·(old features), so the top sheet now holds the old h¹ and the bottom the old h⁰' : 'press “Mirror the motion ⇄” in the card: the two columns trade places'}</div>`;
   };
 
-  // ---------------------------------------------------------------- (5-7) Blocks: tabs Σ channel · depthwise 32×8 · pointwise A|B · memory
   R.block = c => {
     const { D, idx, U, S, b, now, reduce } = c, w = 278, d = DIL[b], P = U.pick && U.pick.b === b ? U.pick : null, tab = U.btab || 'dw';
     const head = `<h3>Block ${b + 1} · 8 taps, ${d} apart</h3>` + tabs('btab', [['ch', 'Σ channel'], ['dw', 'depthwise'], ['pw', 'pointwise A|B'], ['mem', 'memory']], tab);
@@ -177,7 +154,7 @@
       if (!P) return head + `<div class="m">click a cell in the depthwise tab (or the 8-tap node in 3D) to follow one channel</div>`;
       const r = K.channel(D, b, P.c, P.s, idx), nShow = reduce ? 8 : Math.max(1, Math.min(8, Math.floor((now - P.t0) / 200) + 1)), wm = maxAbs(r.terms.map(t => t.w));
       const rows = r.terms.map((t, j) => `<tr class="${j < nShow ? '' : 'off'}${P.tap === j ? ' hl' : ''}"><td>t−${t.lag}</td><td><svg width="44" height="8"><rect x="${t.w < 0 ? 22 - Math.abs(t.w) / wm * 22 : 22}" y="0" width="${Math.abs(t.w) / wm * 22}" height="8" fill="${t.w < 0 ? '#2f8cff' : '#ff9f2e'}"/></svg></td><td>${fmt(t.w)}</td><td>${fmt(t.x)}</td><td>${fmt(t.p)}</td><td>${fmt(t.run)}</td></tr>`).join('');
-      const dead = r.terms.every(t => t.x === 0) ? `<div class="m pk">this channel is zero right now (ReLU), so every product is 0: try another channel (e.g. a bright cell in the depthwise tab)</div>` : '';   // round 10b
+      const dead = r.terms.every(t => t.x === 0) ? `<div class="m pk">this channel is zero right now (ReLU), so every product is 0: try another channel (e.g. a bright cell in the depthwise tab)</div>` : '';
       return head + `<div class="m">${who}</div>${dead}<table class="calc"><tr><td>tap</td><td>weight</td><td></td><td>input</td><td>w·x</td><td>Σ</td></tr>${rows}</table>
         <div class="m" style="margin-top:4px">Σ = <b>${nShow === 8 ? fmt(r.sum) : '…'}</b> = this channel's depthwise output (the glowing node cell). The block output for channel c then mixes <b>all 64</b> depthwise values (32 via A from its own stream, 32 via B from the twin), adds the skip, then ReLU.</div>
         <div class="m">the same 8 weights filter this channel in both streams · 32 × 8 = 256 depthwise + 2,048 + 32 pointwise = 2,336 per block</div>`;
@@ -206,7 +183,6 @@
         <div class="m">row = output channel, column = input (depthwise) channel · solid column = the picked channel, dashed row = what output ${P ? P.c + 1 : 'c'} reads · ${legendRamp(sc)}</div>
         <div class="m">mix: out⁰ = A·h⁰ + B·h¹ + bias, out¹ = A·h¹ + B·h⁰ + bias · click a cell to pick its input column</div>${info}`;
     }
-    // memory: the 7d cached block inputs for one channel, oldest left, now right
     const pc = P || { s: 0, c: 0 }, n = 7 * d + 1, L = 4, pw = w - 8, cw = pw / n, scale = b === 0 ? S.proj : S.blk[b - 1];
     const vals = Array.from({ length: n }, (_, k) => { const lag = n - 1 - k, x = K.blockIn(D, b, idx - lag); return x ? x[pc.s][pc.c] : null; });
     let g = vals.map((v, k) => `<rect x="${(L + k * cw).toFixed(2)}" y="4" width="${(cw + (n > 60 ? .05 : -.6)).toFixed(2)}" height="22" fill="${K.divHex(v, scale)}"/>`).join('');
@@ -220,7 +196,6 @@
       <div class="m">range ${fmt(Math.min(...live))} … ${fmt(Math.max(...live))} · colour scale ±${fmt(scale, 2)} (98th pct)${nn ? ` · ${nn} near-black = before the first recorded call` : ''}</div>`;
   };
 
-  // ---------------------------------------------------------------- (9) Readout: W_head [9×32] heatmap, one coefficient broken into 64 contributions + b_x; or the basis
   R.head = c => {
     const { D, idx, U, bx } = c, w = 278, f = D.frames[idx], tab = U.htab || 'w';
     const head = `<h3>Readout: 2 × 32 → 9 coefficients</h3>` + tabs('htab', [['w', 'W_head'], ['basis', 'basis curve']], tab);
@@ -243,7 +218,6 @@
           <div class="m">bar = W[row][ch] × channel value this call (ReLU zeros give no bar) · scale ±${fmt(m, 3)}</div>`; } }
     return head + `<svg width="${w}" height="${9 * ch + 13}" role="img" aria-label="readout weights, 9 coefficients by 32 channels">${g}</svg>${body}`;
   };
-  // 7.1 (round 1): κ, κ², κ³ and this call's coefficients, their sum per axis
   R.basis = c => {
     const { f } = { f: c.D.frames[c.idx] }, KS = Array.from({ length: H }, (_, k) => k + 1);
     const w = 278, h = 52, X = k => 18 + (k / H) * (w - 24), Yb = v => h - 4 - v * (h - 10), cols = ['#8fe3ff', '#c9a6ff', '#ff9ad5'];
@@ -263,7 +237,6 @@
       <div class="m">dials: c1 c2 c3 this call (±${fmt(cm)}) · curve: their sum (±${fmt(sm)}), value at 200 ms on the right · x row includes the x-bias b_x</div>`;
   };
 
-  // ---------------------------------------------------------------- (10) Trajectory: prior / residual / r per axis; hover a step k
   R.traj = c => {
     const { D, idx, U } = c, f = D.frames[idx]; if (!f || !f.r) return '';
     const KS = Array.from({ length: H }, (_, k) => k + 1), k0 = U.hov >= 1 && U.hov <= H ? U.hov : H, hv = k0 !== H || U.hov === H;
@@ -274,7 +247,7 @@
       g += `<rect x="${ox}" y="10" width="${cw}" height="${ch + 2}" fill="#0f0f0f" rx="3"/><line x1="${ox + 4}" y1="${Y(0)}" x2="${ox + cw - 4}" y2="${Y(0)}" stroke="#2c2c2c"/>` + T(ox + 2, 8, 'xyz'[a], '#a6a6a6', 10);
       g += `<line x1="${X(k0)}" x2="${X(k0)}" y1="11" y2="${ch + 11}" stroke="#ffd166" stroke-width="${hv ? 1.4 : .8}"${hv ? '' : ' stroke-dasharray="2 2"'}/>`;
       g += `<path d="${P(pr[a])}" fill="none" stroke="#e58bb0" stroke-width="1.4" stroke-dasharray="3 2"/><path d="${P(res[a])}" fill="none" stroke="#f0b24a" stroke-width="1.4"/><path d="${P(rr[a])}" fill="none" stroke="#6fa8ff" stroke-width="1.8"/>`;
-      g += T(ox + 2, ch + 24, '10', '#808080', 10) + T(ox + cw - 2, ch + 24, '200 ms', '#eaeaea', 10, 'end');   // viz-look P1: the time axis the three charts lacked
+      g += T(ox + 2, ch + 24, '10', '#808080', 10) + T(ox + cw - 2, ch + 24, '200 ms', '#eaeaea', 10, 'end');
       g += hoverRect('traj', H, ox + 4, 10, cw - 8, ch + 2, 0, 1); });
     const i = k0 - 1, row = a => `<tr><td>${'xyz'[a]}</td><td>${fmt(pr[a][i])}</td><td>+</td><td>${fmt(res[a][i])}</td><td>=</td><td>${fmt(rr[a][i])}</td></tr>`;
     return `<h3>r = prior + learned residual</h3><svg width="278" height="${ch + 28}" role="img" aria-label="prior, residual and r per axis over 200 ms">${g}</svg>
@@ -283,7 +256,6 @@
       <div class="m" style="margin-top:3px">prior = ω × ${(ELAPSED[i] * 1000).toFixed(1)} ms at this step (the current rate, slowing with τ = 100 ms; 0 params)</div>`;
   };
 
-  // ---------------------------------------------------------------- (11) Forecast: per-step angle from now, predicted vs truth, and the error
   R.out = c => {
     const { D, idx, U } = c, f = D.frames[idx]; if (!f || !f.pred || !f.truth) return '';
     const KS = Array.from({ length: H }, (_, k) => k + 1), k0 = U.hov >= 1 && U.hov <= H ? U.hov : H, hv = k0 !== H || U.hov === H;
@@ -303,7 +275,6 @@
       <div class="m">step <b>${k0}</b> (${k0 * 10} ms): predicted <b>${pa[i].toFixed(2)}°</b> · true <b>${ta[i].toFixed(2)}°</b> · error <b>${(k0 === H && f.err != null ? f.err : er[i]).toFixed(2)}°</b>${k0 === H ? ' · <span style="color:#fff">the scored step</span>' : ''}</div>`;
   };
 
-  // ---------------------------------------------------------------- (12) Gaze: yaw / pitch of the forward vector, relative to now
   R.gaze = c => {
     const { D, idx } = c, f = D.frames[idx]; if (!f || !f.pred) return '';
     const yp = q => { const v = K.fwd(q), n = Math.hypot(...v); return [Math.atan2(v[0], v[2]), Math.asin(Math.max(-1, Math.min(1, v[1] / n)))]; };
@@ -325,7 +296,6 @@
       <div class="m">step 20: predicted (${f1(pr[H - 1][0])}°, ${f1(pr[H - 1][1])}°) · true (${f1(tr[H - 1][0])}°, ${f1(tr[H - 1][1])}°) · pointing gap <b>${gap.toFixed(1)}°</b></div>`;
   };
 
-  // ---------------------------------------------------------------- (Reach, round 1) the 393 counter and the coverage of every lag
   R.reach = () => {
     const w = 278, px = w / 393; let bars = '';
     K.COVER.n.forEach((v, lag) => { if (v) bars += `<rect x="${(w - (lag + 1) * px).toFixed(2)}" y="${v > 1 ? 0 : 6}" width="${(px + .05).toFixed(2)}" height="${v > 1 ? 18 : 12}" fill="${v > 1 ? '#ffd166' : '#9b8cff'}"/>`; });

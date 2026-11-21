@@ -1,6 +1,3 @@
-// Round 3: the beginner tour. 2–5 small tips per build step, shown one at a time, each a speech bubble with a thin line to a real anchor:
-// `at` = a 3D anchor name (resolved and projected by index.html, TOUR_ANCHORS), `dom` = a CSS selector for a panel, tab or button.
-// A classic script (window.K8TOUR) so node can load it for the checks. Text: everyday words, consistent with beginner.js.
 (function (root) {
   const TIPS = {
     input: [
@@ -68,7 +65,6 @@
       { at: 'gaze.dots', text: 'Blue dots show where the model says the head will point, green dots where it really pointed (big dots: step 20). This is head direction, not where the eyes look.' },
       { dom: '#gazeKey .err', text: 'Here is the gap between the two at 200 ms, and the scored error, which also counts head tilt (roll).' },
     ],
-    // round 15: 'Wear it' is seen from inside the headset, so the outside-view gaze tips do not fit; these replace them while wearing
     wear: [
       { dom: '#wearX', text: 'You are inside the headset now. The + marks where the head points at this moment.' },
       { at: 'wear.dots', text: 'Blue dots show where the model says the head will point over the next 200 ms, green dots where it really pointed. The big ones are step 20, the scored step.' },
@@ -97,18 +93,14 @@
 #tour[hidden], #tourEdge[hidden] { display:none; }
 @media (prefers-reduced-motion: reduce) { #tour.in { animation:none; } }`;
 
-  // panels the bubble must not cover (only those currently shown count)
   const AVOID = ['#card', '#side', '#tip', '#inset', '#bar', '#gazeKey', '#caption', '#menu', '#userbox', '#brand', '#guideHud'];
-  // round 7: panels a bubble may never cover (the One-call caption, the bottom bar, the guide HUD): the bubble is pushed out of them
   const HARD = ['#caption', '#bar', '#guideHud'];
-  // ticket 06a: the right and bottom edges of the 3D view's viewport (viewer.mjs sets window.K8Viewport: the window, or the story's
-  // panel while embedded). Not embedded they are innerWidth and innerHeight, as before. The tour never runs embedded.
   const vpEdges = () => { const v = root.K8Viewport ? root.K8Viewport() : { left: 0, top: 0, width: innerWidth, height: innerHeight }; return [v.left + v.width, v.top + v.height]; };
   function clearHard(x, y, bw, bh) {
     const [W, H] = vpEdges(), rs = HARD.map(q => document.querySelector(q)).filter(el => el && !el.hidden && el.getClientRects().length).map(el => el.getBoundingClientRect()).filter(r => r.width);
     for (let it = 0; it < 4; it++) {
       const R = rs.find(r => x < r.right && x + bw > r.left && y < r.bottom && y + bh > r.top); if (!R) break;
-      const up = R.top - 6 - bh, down = R.bottom + 6;                           // move to whichever side is nearer and still on screen
+      const up = R.top - 6 - bh, down = R.bottom + 6;
       y = (up >= 8 && (Math.abs(up - y) <= Math.abs(down - y) || down + bh > H - 8)) ? up : Math.min(H - 8 - bh, down);
     }
     return [Math.max(8, Math.min(W - 8 - bw, x)), Math.max(8, Math.min(H - 8 - bh, y))];
@@ -119,7 +111,7 @@
   function create(api) {
     const doc = document, NS = 'http://www.w3.org/2000/svg', reduce = !!api.reduce;
     let seen; try { seen = new Set(JSON.parse(sessionStorage.getItem('k8tourSeen') || '[]')); } catch { seen = new Set(); }
-    const remember = k => { seen.add(k); try { sessionStorage.setItem('k8tourSeen', JSON.stringify([...seen])); } catch { /* storage off: once per page load */ } };
+    const remember = k => { seen.add(k); try { sessionStorage.setItem('k8tourSeen', JSON.stringify([...seen])); } catch {  } };
 
     const st = doc.createElement('style'); st.textContent = CSS; doc.head.appendChild(st);
     const box = doc.createElement('div'); box.id = 'tour'; box.hidden = true; box.setAttribute('role', 'note'); box.setAttribute('aria-live', 'polite');
@@ -133,19 +125,15 @@
     chip.innerHTML = '<span class="ar" aria-hidden="true">➜</span><span class="ct"></span>';
     doc.body.append(svg, box, chip);
     const txt = box.querySelector('.tt'), ext = box.querySelector('.te'), num = box.querySelector('.tn'), nextB = box.querySelector('.tx'), backB = box.querySelector('.tb'), skipB = box.querySelector('.ts');
-    // Enter or Space on a tip button must not also reach the page's own keys (Enter = next build step, Space = play)
     for (const el of [box, chip]) el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); });
 
-    // G = the guided walkthrough's current shot (round 4, guide.js): { t: tip, extra, label, first, last, hidden, onNext, onBack }.
-    // While G is set the bubble shows that shot and the per-step tips stay out of the way (enter / start / close / onKey do nothing).
     let key = null, i = 0, timer = null, cand = -1, G = null;
     const has = k => !!(k && TIPS[k] && TIPS[k].length);
     const tip = () => G ? G.t : TIPS[key][i];
-    // viz-phone: on a touch screen a tip that starts with "Hover ..." starts with its touch wording instead (the tip's `touch` field replaces the words before "to")
-    const say = t => t.touch && doc.documentElement.classList.contains('touch') ? t.text.replace(/^Hover[^:]*? to /, t.touch + ' to ') : t.text;
-    // viz-phone: on a small screen the bubble is docked by phone.css (over the sheet, or along the top of the scene); phone.js picks which and opens the tab the tip points into
+    const say = t => { const s = t.touch && doc.documentElement.classList.contains('touch') ? t.text.replace(/^Hover[^:]*? to /, t.touch + ' to ') : t.text;
+      return window.K8Phone ? window.K8Phone.words(s) : s; };
     const docked = () => !!(root.K8Phone && root.K8Phone.form());
-    function hideAll() { box.hidden = true; chip.hidden = true; svg.style.display = 'none'; if (api.highlight) api.highlight(null); }   // round 5: the anchor glow goes with the bubble
+    function hideAll() { box.hidden = true; chip.hidden = true; svg.style.display = 'none'; if (api.highlight) api.highlight(null); }
     function close() { if (G) return; clearTimeout(timer); timer = null; key = null; hideAll(); }
     function show() {
       if (G) {
@@ -163,35 +151,27 @@
     }
     function start(k) { if (G) return; clearTimeout(timer); timer = null; if (!has(k)) return close(); key = k; i = 0; remember(k); show(); }
     function next() { if (G) return G.onNext(); if (!key) return; if (i < TIPS[key].length - 1) { i++; show(); } else close(); }
-    // a step was entered (or the level changed to beginner): start once per step per session, after the camera has flown in
     function enter(k) {
-      if (G) { clearTimeout(timer); timer = null; return; }   // the guided walkthrough owns the bubble
-      if (api.step() === 'wear') k = 'wear';       // round 15: while wearing, any step that is redrawn means the wear tips
-      if (key && key === k) return;                // the same step was redrawn (e.g. a menu toggle): keep the open tour
+      if (G) { clearTimeout(timer); timer = null; return; }
+      if (api.step() === 'wear') k = 'wear';
+      if (key && key === k) return;
       close(); if (!api.beginner() || !has(k) || seen.has(k)) return;
       timer = setTimeout(() => { timer = null; if (api.beginner() && api.step() === k) start(k); }, reduce ? 0 : 1000);
     }
     function onKey(e) {
-      if (G || e.metaKey || e.ctrlKey || e.altKey) return false;   // in the walkthrough, guide.js handles the keys
-      if (e.key === 'Escape' && key) { close(); return true; }                 // only the tour closes, not the whole view
+      if (G || e.metaKey || e.ctrlKey || e.altKey) return false;
+      if (e.key === 'Escape' && key) { close(); return true; }
       if (e.key === 't' || e.key === 'T') { if (key) next(); else { const k = api.step(); if (api.beginner() && has(k)) start(k); else return false; } return true; }
       return false;
     }
     nextB.onclick = next; skipB.onclick = close; chip.onclick = next; backB.onclick = () => { if (G) G.onBack(); };
-    // the walkthrough: show one shot (g), or g.hidden = keep it but hide the bubble (while the camera flies), or null = end it
     function guide(g) {
       clearTimeout(timer); timer = null; key = null; G = g || null;
       if (!G || G.hidden) return hideAll();
       show();
     }
 
-    // round 7: the anchor is off-screen, behind the camera or hidden. The bubble stays (where it was, clamped into the view, never under the
-    // bottom bar, caption or HUD) and a small arrow at the edge points to the anchor; only the pointer line goes.
     let lastXY = null;
-    // round 15: an anchor on a moving object (api.moving: the gaze dots and headsets, and in the wear view every anchor, panels included:
-    // the + and the ring labels follow the head) would drag the bubble
-    // around every frame. Its bubble is placed once (pin) and stays until the tip changes, the anchor leaves the screen or the window
-    // is resized; only the pointer line and ring follow the anchor, low-passed (time constant 150 ms, sm) so they do not jitter.
     let pin = null, sm = null;
     function edgeChip(p, label) {
       pin = null; sm = null; svg.style.display = 'none'; chip.hidden = false; box.hidden = false;
@@ -202,7 +182,7 @@
       const [W, H] = vpEdges();
       chip.querySelector('.ct').textContent = G ? `tip ${G.label} ${label}` : `tip ${i + 1}/${TIPS[key].length} ${label}`;
       const ar = chip.querySelector('.ar');
-      if (!p) { ar.style.display = 'none'; const F = root.K8Phone && root.K8Phone.free(); chip.style.left = `${F ? (F.L + F.R) / 2 : W / 2}px`; chip.style.top = `${F ? (F.T + F.B) / 2 : H * .5}px`; return; }   // round 7: clear of the bottom bar and caption
+      if (!p) { ar.style.display = 'none'; const F = root.K8Phone && root.K8Phone.free(); chip.style.left = `${F ? (F.L + F.R) / 2 : W / 2}px`; chip.style.top = `${F ? (F.T + F.B) / 2 : H * .5}px`; return; }
       ar.style.display = '';
       const F = root.K8Phone && root.K8Phone.free(), cx = F ? (F.L + F.R) / 2 : W / 2, cy = F ? (F.T + F.B) / 2 : H / 2; let dx = p.x - cx, dy = p.y - cy; if (p.behind) { dx = -dx; dy = -dy; }
       if (Math.abs(dx) + Math.abs(dy) < 1e-3) dy = 1;
@@ -215,9 +195,9 @@
       if (!key && !G) return;
       if (G && G.hidden) return hideAll();
       const t = tip(), [W, H] = vpEdges(); let A = null, pt = null;
-      if (t.center) {                      // no anchor (the walkthrough's summary shot): centred near the top, no pointer
+      if (t.center) {
         chip.hidden = true; box.hidden = false; svg.style.display = 'none';
-        const bw = box.offsetWidth; box.style.left = `${Math.max(8, Math.min(W - 8 - bw, (W - bw) / 2 + 100))}px`; box.style.top = '92px'; return;   // wide and short, under the HUD, above the model
+        const bw = box.offsetWidth; box.style.left = `${Math.max(8, Math.min(W - 8 - bw, (W - bw) / 2 + 100))}px`; box.style.top = '92px'; return;
       }
       if (t.dom) {
         const el = doc.querySelector(t.dom), r = el && el.getBoundingClientRect();
@@ -227,12 +207,12 @@
         const p = api.point(t.at);
         if (!p || !p.vis) return edgeChip(null, 'is hidden in this view');
         if (p.behind || p.x < 8 || p.x > W - 8 || p.y < 8 || p.y > H - 8) return edgeChip(p, 'is off-screen · drag to look');
-        pt = p; A = { l: p.x - 16, t: p.y - 16, r: p.x + 16, b: p.y + 16 };       // keep the bubble off the anchor itself
+        pt = p; A = { l: p.x - 16, t: p.y - 16, r: p.x + 16, b: p.y + 16 };
       }
       chip.hidden = true; box.hidden = false;
       const moving = !!(api.moving && api.moving(t.at || t.dom)), bw = box.offsetWidth, bh = box.offsetHeight;
       let x, y;
-      if (docked()) { const r = box.getBoundingClientRect(); x = r.left; y = r.top; pin = null; sm = null; }   // viz-phone: the CSS places it; only the pointer line is worked out here
+      if (docked()) { const r = box.getBoundingClientRect(); x = r.left; y = r.top; pin = null; sm = null; }
       else if (moving && pin && pin.W === W && pin.H === H) [x, y] = [pin.x, pin.y];
       else {
       const g = t.dom ? 14 : 34, cx = (A.l + A.r) / 2, cy = (A.t + A.b) / 2;
@@ -242,23 +222,19 @@
       const view = { l: 8, t: 8, r: W - 8, b: H - 8 };
       const score = C.map(([x, y], n) => { const R = { l: x, t: y, r: x + bw, b: y + bh };
         return (bw * bh - overlap(R, view)) * 4 + avoid.reduce((a, P) => a + overlap(R, P), 0) + overlap(R, A) * 8 + n * 20; });
-      let best = score.indexOf(Math.min(...score)); if (cand >= 0 && score[cand] <= score[best] + 400) best = cand; cand = best;   // hysteresis: no flicker while orbiting
+      let best = score.indexOf(Math.min(...score)); if (cand >= 0 && score[cand] <= score[best] + 400) best = cand; cand = best;
       x = Math.max(8, Math.min(W - 8 - bw, C[best][0])); y = Math.max(8, Math.min(H - 8 - bh, C[best][1]));
       [x, y] = clearHard(x, y, bw, bh);
-      // viz-look P1: on a small window none of the eight places beside the anchor is free, and the least-bad one could lie on the card.
-      // If so, slide the bubble just off the card (to its right, or above it), wherever it then covers the least of the other panels.
-      // The same for the side panel when the tip points into the scene (a tip that points at the panel itself has to touch it).
       { const shown = AVOID.filter(s => { const el = doc.querySelector(s); return el && el.getClientRects().length; }), big = ['#card', ...(t.dom ? [] : ['#side'])].map(s => avoid[shown.indexOf(s)]).filter(Boolean);
         const cost = ([a, b]) => { const R = { l: a, t: b, r: a + bw, b: b + bh }; return avoid.reduce((s, P) => s + overlap(R, P) * (big.includes(P) ? 50 : 1), 0) + overlap(R, A) * 8; };
         for (const cr of big) { if (!(overlap({ l: x, t: y, r: x + bw, b: y + bh }, cr) > 0)) continue;
-          const side = cr.l > W / 2, nx = side ? cr.l - 8 - bw : cr.r + 8;       // the card is on the left, the side panel on the right
+          const side = cr.l > W / 2, nx = side ? cr.l - 8 - bw : cr.r + 8;
           const opts = [[nx, y], [x, cr.t - 8 - bh], [x, cr.b + 8], [nx, cr.t - 8 - bh]].filter(([a, b]) => a >= 8 && a + bw <= W - 8 && b >= 8 && b + bh <= H - 8).map(([a, b]) => clearHard(a, b, bw, bh));
           if (opts.length) { const o = opts.reduce((m, c) => cost(c) < cost(m) ? c : m); if (cost(o) < cost([x, y])) [x, y] = o; } } }
       pin = moving ? { x, y, W, H } : null; sm = null;
       }
       lastXY = [x, y];
       box.style.left = `${x}px`; box.style.top = `${y}px`;
-      // the pointer: from the anchor (or the panel's nearest edge point) to the nearest point of the bubble
       const bx = x + bw / 2, by = y + bh / 2; let ax = pt ? pt.x : Math.max(A.l, Math.min(A.r, bx)), ay = pt ? pt.y : Math.max(A.t, Math.min(A.b, by));
       if (moving) {
         const now = performance.now();
@@ -271,7 +247,6 @@
       ring.style.display = pt ? '' : 'none'; if (pt) { ring.setAttribute('cx', ax); ring.setAttribute('cy', ay); }
     }
 
-    // settling: the smoothed pointer has not caught up with its anchor yet (the page then calls frame() every animation frame)
     return { start, enter, close, next, frame, onKey, has, guide, isOpen: () => !!key || !!G, settling: () => !!(sm && sm.d > .5 && !box.hidden) };
   }
 

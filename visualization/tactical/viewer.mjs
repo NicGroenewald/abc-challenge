@@ -1,7 +1,3 @@
-// The viewer: the full 3D explorer of the k8_combined model.
-// Moved here unchanged from the inline <script type="module"> of index.html on 10 Nov 2026 (story spec, ticket 06a step 1),
-// so the story's markup and the viewer's code are separate files. index.html loads it with <script type="module" src="viewer.mjs">.
-// In story mode the boot script in index.html keeps it from starting at page load.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
@@ -9,60 +5,52 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { makeHead, lookLights } from './head3d.js';
 
-// ================================================================ data (traces load on demand, one per test user)
 const INDEX = window.TRACE_INDEX || [];
 window.TRACES = window.TRACES || {};
 let D = null, shown, S, meanErr, maxDiff = 0;
-let CALL = null, PICK = null, GMIX = null, guideInset = null, glowDom = null, glowSel = null;   // glowDom / glowSel: the tip's outlined DOM anchor   // GMIX / guideInset: round 5 guide-shot effects (mixing pick, inset override)
-                   // proposal: running one-call animation, picked block channel
-// round 2: inset/3D interaction state (reset on every step change), connection brightness, one-stream mode
+let CALL = null, PICK = null, GMIX = null, guideInset = null, glowDom = null, glowSel = null;
 const U = { hov: null, fpick: null, ppick: null, hpick: null, fexp: false, btab: 'dw', htab: 'w', swapped: false, pick: null };
 let LB = 1, ONE = false, tourDirty = true, tourT = 0;
 function fetchTrace(id) {
   return new Promise((ok, bad) => {
     if (window.TRACES[id]) return ok(window.TRACES[id]);
-    const s = document.createElement('script'); s.src = `traces/${id}.js?r=q1`;   // ?r=f1 (13 Nov 2026): the traces were regenerated for the final model; the tag makes a browser that still holds the old files fetch the new ones
+    const s = document.createElement('script'); s.src = `traces/${id}.js?r=q1`;
     s.onload = () => window.TRACES[id] ? ok(window.TRACES[id]) : bad(new Error(`traces/${id}.js loaded but defined no trace`)); s.onerror = () => bad(new Error(`traces/${id}.js`)); document.head.appendChild(s);
   });
 }
 
-// ================================================================ layout constants
-const TS = 0.025, NP = 400;                    // X = time: 10 ms per sample, now at x = 0, past left, future right
-const ZP = 0.06, Z0 = 0.25;                    // Z = channels: pitch, gap to the mirror plane
-const zc = (s, c) => (s ? -1 : 1) * (Z0 + c * ZP);          // observed stream h⁰ in front (z > 0), mirrored stream h¹ reflected behind (paper: method.tex)
+const TS = 0.025, NP = 400;
+const ZP = 0.06, Z0 = 0.25;
+const zc = (s, c) => (s ? -1 : 1) * (Z0 + c * ZP);
 const zr = (r, n, p = .09) => (r - (n - 1) / 2) * p;
 const DIL = [1, 8, 47], SIGNS = [1, -1, -1, 1, -1, 1, 1], H = 20, TAU = 10;
-// Y = depth in the network
 const LY = { in: 0, feat: 1.1, proj: 2.3, dw: b => 3.05 + 2.1 * b, upd: b => 3.75 + 2.1 * b, out: b => 4.4 + 2.1 * b, head: 9.8, prior: 10.9, corr: 11.25, r: 11.6 };
 const yIn = b => b === 0 ? LY.proj : LY.out(b - 1);
-const FY = LY.r + 1.1;                          // forecast sits after the trajectory (rightmost in the view)
-const CX = .35;                                 // compute lane just right of "now"
-const ELAPSED = Array.from({ length: H }, (_, i) => -TAU * Math.expm1(-(i + 1) / TAU) / 100);   // best/export.py:105-106
+const FY = LY.r + 1.1;
+const CX = .35;
+const ELAPSED = Array.from({ length: H }, (_, i) => -TAU * Math.expm1(-(i + 1) / TAU) / 100);
 
-// round 2: the model maths and the colour ramp live in insets.js (window.K8I), shared by the 3D and the insets
 const K = window.K8I;
 const SRGB = THREE.SRGBColorSpace, rampC = t => new THREE.Color().setRGB(...K.ramp(t), SRGB);
 const tmpF = new THREE.Color(), cNeg = rampC(-.64), cZero = rampC(0), cPos = rampC(.64), cNone = new THREE.Color('#0c1018'), tmpC = new THREE.Color();
-const DIM = .25;                                // past values the model no longer holds are drawn at 25% brightness
-// live extent per layer (columns back from now that the model actually holds or reads this call)
+const DIM = .25;
 const LIVE = { input: 1, feat: 0, proj: 7, blk0: 56, blk1: 329, blk2: 0 };
 const dimC = (col, live) => live ? col : col.lerp(cZero, 1 - DIM);
-// orange +, blue −; √ scale, dark near 0 → saturated → pale at the 98th-percentile clip (K.ramp)
-const _rgb = [0, 0, 0], divColor = (v, s) => { K.ramp3(v / (s || 1), _rgb); return tmpC.setRGB(_rgb[0], _rgb[1], _rgb[2], SRGB); };   // round 6: no per-cell arrays
-const pct = (a, p) => { const b = new Float64Array(a.length); for (let i = 0; i < b.length; i++) b[i] = Math.abs(a[i]); b.sort(); return b[Math.floor(p * (b.length - 1))] || 1; };   // P1: a typed array sorts by number without a compare function: same order, same value, about 5× faster
+const _rgb = [0, 0, 0], divColor = (v, s) => { K.ramp3(v / (s || 1), _rgb); return tmpC.setRGB(_rgb[0], _rgb[1], _rgb[2], SRGB); };
+const pct = (a, p) => { const b = new Float64Array(a.length); for (let i = 0; i < b.length; i++) b[i] = Math.abs(a[i]); b.sort(); return b[Math.floor(p * (b.length - 1))] || 1; };
 const blockIn = (b, i) => K.blockIn(D, b, i);
 const depthwise = (b, i) => K.depthwise(D, b, i);
 const pointwise = (b, h) => K.pointwise(D, b, h);
 const relu = v => v.map(r => r.map(x => Math.max(0, x)));
-const geo = K.geo;     // angle between two rotations in degrees, normalised first (4-decimal trace values)
-let RAW = null;        // the raw trace, for weights the adapter does not map (head_bias_x)
+const geo = K.geo;
+let RAW = null;
 function prepare(raw) {
   RAW = raw; D = window.adaptTrace(raw); shown = D.frames.slice(D.firstShown); HGEN++;
   S = { feat: pct(shown.flatMap(f => f.feat.slice(0, 3)), .98), speed: pct(shown.map(f => f.feat[3]), .98),
     proj: pct(shown.flatMap(f => f.proj.flat()), .98), blk: [0, 1, 2].map(b => pct(shown.flatMap(f => f.blk[b].flat()), .98)),
     coef: pct(shown.flatMap(f => f.coef.flat()), .98), r: pct(shown.flatMap(f => f.r.flat()), .98) };
-  meanErr = shown.reduce((a, f) => a + f.err, 0) / shown.length;            // float64 step-20 errors stored by make_trace.py
-  maxDiff = 0;   // recompute every block of every shown frame in JS from the dumped weights; compare with the ONNX-recorded outputs
+  meanErr = shown.reduce((a, f) => a + f.err, 0) / shown.length;
+  maxDiff = 0;
   const hAll = [[], [], []], uAll = [[], [], []];
   for (let i = D.firstShown; i < D.frames.length; i++) for (let b = 0; b < 3; b++) { const h = depthwise(b, i), u = relu(pointwise(b, h)), x = blockIn(b, i), y = D.frames[i].blk[b];
     hAll[b].push(...h.flat()); uAll[b].push(...u.flat());
@@ -72,50 +60,35 @@ function prepare(raw) {
 }
 const featScale = i => i < 3 ? S.feat : i === 3 ? S.speed : 1;
 
-// ================================================================ three
-// idle rendering (round 3): the loop draws only when something changed (requestRender) or is animating (animating(), in the loop)
-let needsRender = true, wakeLoop = null; const requestRender = () => { needsRender = true; if (wakeLoop) wakeLoop(); };   // P1: also restarts a sleeping loop
+let needsRender = true, wakeLoop = null; const requestRender = () => { needsRender = true; if (wakeLoop) wakeLoop(); };
 let renderer;
-const BOOT = window.K8_BOOT || { tier: 'full', tierMode: 'auto' };   // P1: the boot script's decision (picture version or 3D, starting tier)
-// ---- story embed (ticket 06a). The story can start this viewer inside one of its panels: it sets window.K8_EMBED = { el, user, view }
-// and inserts this module as a new script. EMB() reads that global at call time (never cached), so leaving embed mode (enter(), ticket 07)
-// only has to clear it. With K8_EMBED unset every branch below takes exactly the path the viewer always took.
+const BOOT = window.K8_BOOT || { tier: 'full', tierMode: 'auto' };
 const EMB = () => window.K8_EMBED || null;
-// The viewport: where the 3D view sits on the page and how big it is. Not embedded = the window (0, 0, innerWidth × innerHeight), the
-// same numbers as before; embedded = the story's element. Every read of the view's size, and every pointer-to-scene conversion, uses it.
 function viewport() {
   const e = EMB(); if (!e || !e.el) return { left: 0, top: 0, width: innerWidth, height: innerHeight };
   const r = e.el.getBoundingClientRect(); return { left: r.left, top: r.top, width: Math.max(1, r.width), height: Math.max(1, r.height) };
 }
-window.K8Viewport = viewport;                       // tour.js and phone.js (classic scripts) read the same viewport through this
-let EMB_ACTIVE = true;                              // K8Viewer.setActive: while embedded and false, the loop is blocked ("asleep")
-let EMBT = null;                                    // ticket 06b: { at: ms, fn } the next timed step animation while embedded (mirror swap, repeated one call); null otherwise
-// K8Viewer.ready: resolves once the first trace has been drawn. The extra catch() only marks the rejection as seen (no "uncaught" noise);
-// anyone awaiting READY still gets it.
+window.K8Viewport = viewport;
+let EMB_ACTIVE = true;
+let EMBT = null;
 let readyOk, readyBad, readyDone = false; const READY = new Promise((ok, bad) => { readyOk = ok; readyBad = bad; }); READY.catch(() => {});
-try { if (window.K8_NOSTART) throw new Error(window.K8_NOSTART); renderer = new THREE.WebGLRenderer({ antialias: BOOT.tier === 'full', ...(EMB() && EMB().clear && { alpha: true }) }); }   // P1: smoothing of edges (antialiasing) only on the full tier; it is fixed when the 3D context is made
-catch (err) { if (EMB()) { readyBad(err); window.K8Viewer = { ready: READY }; }   // embedded: no picture version here; the story keeps its own picture
-  else if (BOOT.startLite) BOOT.startLite('WebGL2 could not start on this computer.'); throw err; }   // P1: no 3D → the picture version (lite.js) takes over; this module stops here
-renderer.localClippingEnabled = true;   // round 5: guide block shots clip the walls to their live part
+try { if (window.K8_NOSTART) throw new Error(window.K8_NOSTART); renderer = new THREE.WebGLRenderer({ antialias: BOOT.tier === 'full' || !!BOOT.phone, ...(EMB() && EMB().clear && { alpha: true }) }); }
+catch (err) { if (EMB()) { readyBad(err); window.K8Viewer = { ready: READY }; }
+  else if (BOOT.startLite) BOOT.startLite('WebGL2 could not start on this computer.'); throw err; }
+renderer.localClippingEnabled = true;
  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); renderer.setSize(viewport().width, viewport().height);
 document.getElementById('scene').appendChild(renderer.domElement);
 const labelR = new CSS2DRenderer({ element: document.getElementById('labels') }); labelR.setSize(viewport().width, viewport().height);
-const scene = new THREE.Scene(); scene.background = new THREE.Color('#000');   // theme: the story's black page
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#000');
 const camera = new THREE.PerspectiveCamera(40, viewport().width / viewport().height, .02, 300);
 const controls = new OrbitControls(camera, renderer.domElement);
 Object.assign(controls, { enableDamping: true, zoomToCursor: true, screenSpacePanning: true, minDistance: .2, maxDistance: 120, rotateSpeed: .8 });
-// Where the canvas and the label layer live. Not embedded: #scene and the label layer's own place in <body> (full window, as always).
-// Embedded: both move into the story's element and are placed over it with absolute positioning. Embedded, the label layer is `inert`
-// (one attribute that blocks pointer input and focus and hides it from screen readers), the canvas is no tab stop and lets the wheel
-// and pointer pass to the page (so scrolling over the panel scrolls the story), and orbiting is off. A canvas keeps its WebGL context
-// when it is moved, so placeDom() also undoes all of this once K8_EMBED is cleared (enter(), ticket 07). A resize observer on the
-// element drives the normal resize path while embedded.
 const labelsEl = document.getElementById('labels'), labelsHome = [labelsEl.parentNode, labelsEl.nextSibling];
 let domEmbedded = false, embedRO = null;
 function placeDom() {
   const e = EMB(), c = renderer.domElement;
   if (e && e.el) {
-    if (getComputedStyle(e.el).position === 'static') e.el.style.position = 'relative';   // the absolute children below are placed against it
+    if (getComputedStyle(e.el).position === 'static') e.el.style.position = 'relative';
     Object.assign(c.style, { position: 'absolute', left: '0', top: '0', pointerEvents: 'none' }); c.tabIndex = -1;
     Object.assign(labelsEl.style, { position: 'absolute', left: '0', top: '0', pointerEvents: 'none' }); labelsEl.inert = true; labelsEl.setAttribute('aria-hidden', 'true');
     e.el.append(c, labelsEl); controls.enabled = false; domEmbedded = true;
@@ -128,22 +101,14 @@ function placeDom() {
   }
 }
 placeDom();
-lookLights(scene, renderer, scene);   // the story's key, fill and rim lights and reflection map (head3d.js), as in ../proposal; only the head's materials are lit (was ambient 1 + one light 1.1)
+lookLights(scene, renderer, scene);
 const floor = new THREE.GridHelper(60, 60, 0x18202d, 0x111823); floor.position.set(6, -3.2, -3); scene.add(floor);
-// theme: the floor in the story's hairline grey. GridHelper keeps its colours in a vertex-colour buffer (which the colour fingerprint
-// hashes), so that buffer is left exactly as it was and the grid is drawn with one plain material colour instead.
 floor.material.vertexColors = false; floor.material.color.set('#1c1c1c'); floor.material.needsUpdate = true;
-// embed option `clear` (CONTRACTS 6): a transparent canvas, so the model stands free on the story's stage. A WebGL context's alpha is fixed
-// when it is made, so this is decided once, at start (above: alpha: true). No scene background, clear alpha 0, and the floor grid moves to
-// layer 2, which the camera does not draw (showBuild / setSolo still set its .visible as usual; the layer wins). Labels stay.
 if (EMB() && EMB().clear) { scene.background = null; renderer.setClearColor(0x000000, 0); floor.layers.set(2); }
 
 const GROUPS = {}; let CUR = null;
-// The model is built in 'design' axes (x = time, y = network depth, z = channels) and shown through one rotation:
-// screen x = depth (left to right), screen y = channels (h⁰ above the mirror plane, h¹ reflected below), screen z = time (past recedes, future comes toward you).
-// A cyclic swap of axes is a proper rotation (det +1), so nothing is mirrored.
 const MODEL = new THREE.Group(); MODEL.matrixAutoUpdate = false; MODEL.matrix.set(0, 1, 0, 0,  0, 0, 1, 0,  1, 0, 0, 0,  0, 0, 0, 1); scene.add(MODEL);
-const W = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(MODEL.matrix);   // design coords -> world
+const W = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(MODEL.matrix);
 const stageGroup = n => { const g = new THREE.Group(); MODEL.add(g); GROUPS[n] = g; CUR = g; return g; };
 const add = o => (CUR || scene).add(o);
 const inGroup = (n, fn) => { const p = CUR; CUR = GROUPS[n]; fn(); CUR = p; };
@@ -154,20 +119,18 @@ function label(html, pos, cls = 'lbl', key = null, parent = null) {
   const el = document.createElement('div'); el.className = cls; el.innerHTML = html;
   if (key) { el.classList.add('click'); el.dataset.key = key; el.setAttribute('role', 'button'); el.tabIndex = 0;
     el.addEventListener('click', e => { e.stopPropagation(); select(key); });
-    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); select(key); } }); }   // round 8 (a11y F3): not also Next
-  else el.setAttribute('aria-hidden', 'true');   // a11y F20: plain scene labels are decoration for AT; the clickable names stay
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); select(key); } }); }
+  else el.setAttribute('aria-hidden', 'true');
   const o = new CSS2DObject(el); o.position.copy(pos); const host = parent || CUR || scene; host.add(o);
   allLabels.push({ o, grp: host, small: !/stage|method|tap|layer/.test(cls), tap: /tap/.test(cls), layer: /layer/.test(cls) }); return o;
 }
-// a label shown only while cond() is true (and its group is visible)
 function condLabel(html, pos, cls, cond, parent = null) { const o = label(html, pos, cls, null, parent); allLabels[allLabels.length - 1].cond = cond; return o; }
-// instanced slab: rows (channels) x cols (time, from x0 stepping dx) x sheets (streams); zf(s, r) gives z
 function slab({ rows, cols, sheets = 1, y, zf, x0 = 0, dx = -TS, h = .1, stage }) {
   const n = rows * cols * sheets, mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(TS * .82, h, ZP * .8), new THREE.MeshBasicMaterial(), n), m = new THREE.Matrix4();
   for (let s = 0; s < sheets; s++) for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
     const k = (s * rows + r) * cols + c; m.makeTranslation(x0 + c * dx, y, zf(s, r)); mesh.setMatrixAt(k, m); mesh.setColorAt(k, cZero); }
   mesh.userData.stage = stage; if (stage) pickables.push(mesh); add(mesh);
-  mesh.userData.grid = { rows, cols, sheets, y, zf, x0, dx, h };   // P1: kept for the min tier's flat sheets (wallSheet)
+  mesh.userData.grid = { rows, cols, sheets, y, zf, x0, dx, h };
   mesh.set = (s, r, c, col) => mesh.setColorAt((s * rows + r) * cols + c, col);
   return mesh;
 }
@@ -177,10 +140,9 @@ function lineSet(pairs, opacity = 1, dashed = false) {
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   const mat = dashed ? new THREE.LineDashedMaterial({ vertexColors: true, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, dashSize: .025, gapSize: .025 })
                      : new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
-  // viz-look P1: these lines add light to what is behind them, so in the depth fade they must fade to black (adding nothing), not to the background colour
   mat.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <fog_fragment>', '#ifdef USE_FOG\n\tgl_FragColor.rgb *= 1.0 - smoothstep( fogNear, fogFar, vFogDepth );\n#endif'); };
   const l = new THREE.LineSegments(g, mat); l.userData.op = opacity; if (dashed) l.computeLineDistances();
-  l.paint = (i, c, k) => { const v = Math.min(1, Math.max(0, k * (l.userData.static ? 1 : LB))), j = i * 6, r = c.r * v, gg = c.g * v, bb = c.b * v;   // round 6: scalar writes
+  l.paint = (i, c, k) => { const v = Math.min(1, Math.max(0, k * (l.userData.static ? 1 : LB))), j = i * 6, r = c.r * v, gg = c.g * v, bb = c.b * v;
     col[j] = r; col[j + 1] = gg; col[j + 2] = bb; col[j + 3] = r; col[j + 4] = gg; col[j + 5] = bb; };
   l.done = () => { g.attributes.color.needsUpdate = true; }; add(l); lines.push(l); return l;
 }
@@ -188,7 +150,6 @@ function tube(pts, color, r = .018, opacity = .8, noFrame = false) {
   const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), Math.max(24, pts.length * 20), r, 6),
     new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity })); m.userData.noFrame = noFrame; add(m); return m;
 }
-// 13.1: a small glowing dot that travels along a polyline (design coords) inside a group; skipped under reduced motion
 const PULSES = [], pulseGeo = new THREE.SphereGeometry(.035, 10, 8);
 function pulse(points, t0, dur, color, group) {
   if (reduce || !group || points.length < 2) return null;
@@ -208,9 +169,8 @@ function edgeBox(x0, x1, y0, y1, z0, z1, color, opacity = .7) {
   const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0)), new THREE.LineBasicMaterial({ color, transparent: true, opacity }));
   e.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2); add(e); return e;
 }
-const XL = -NP * TS - .55;                      // left edge for layer names
+const XL = -NP * TS - .55;
 
-// ================================================================ build
 stageGroup('links');
 const plane = new THREE.Mesh(new THREE.PlaneGeometry(NP * TS + .9, LY.out(2) - LY.feat + 1.1),
   new THREE.MeshBasicMaterial({ color: '#ffcf6e', transparent: true, opacity: .045, side: THREE.DoubleSide, depthWrite: false }));
@@ -220,39 +180,35 @@ label('Mirror plane', V(-NP * TS / 2, LY.out(2) + .75, 0), 'lbl stage', 'mirror'
 label('observed stream h⁰', V(0, LY.in - 1.2, Z0 + 16 * ZP), 'lbl');
 label('mirrored stream h¹', V(0, LY.in - 1.2, -(Z0 + 16 * ZP)), 'lbl');
 for (const [c, t] of [[399, '−4 s'], [300, '−3 s'], [200, '−2 s'], [100, '−1 s'], [0, 'now']]) label(t, V(-c * TS, -.6, 0), 'lbl');
-condLabel('200 ms', V(.5, -.6, .35), 'lbl', () => build < 0 || build >= STEPS.indexOf('out'));   // viz-look P1: the future side is only named once the forecast exists
+condLabel('200 ms', V(.5, -.6, .35), 'lbl', () => build < 0 || build >= STEPS.indexOf('out'));
 const nowLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([V(0, -.4, 0), V(0, LY.r + .3, 0)]), new THREE.LineDashedMaterial({ color: '#6b6b6b', dashSize: .08, gapSize: .06 }));
 nowLine.computeLineDistances(); add(nowLine);
 
-// input [400 x 4]
 stageGroup('input');
 const SL = {};
 SL.input = slab({ rows: 4, cols: NP, y: LY.in, zf: (s, r) => zr(r, 4), stage: 'input' });
 label('Input', V(0, LY.in, -.6), 'lbl stage', 'input');
 ['w', 'x', 'y', 'z'].forEach((c, r) => label(c, V(.06 + r * .06, LY.in, zr(r, 4)), 'lbl row'));
 
-// features, split into the observed stream h⁰ and the mirrored stream h¹
 stageGroup('feat');
 SL.feat = slab({ rows: 7, cols: NP, sheets: 2, y: LY.feat, zf: zc, stage: 'feat' });
 label('Features', V(0, LY.feat, -(Z0 + 32 * ZP + .45)), 'lbl stage', 'feat');
-['ωx', 'ωy', 'ωz', 'speed', 'gx', 'gy', 'gz'].forEach((n, r) => { const lx = .1 + (r % 2) * .2; label(n, V(lx, LY.feat, zc(0, r)), 'lbl row'); label((SIGNS[r] < 0 ? '−' : '') + n, V(lx, LY.feat, zc(1, r)), 'lbl row');   /* viz-look P1: alternate rows step out, so the seven names do not stack */ });
-const FLIPB = [];    // flipped-row outlines on h¹ (hidden in one-stream mode)
+['ωx', 'ωy', 'ωz', 'speed', 'gx', 'gy', 'gz'].forEach((n, r) => { const lx = .1 + (r % 2) * .2; label(n, V(lx, LY.feat, zc(0, r)), 'lbl row'); label((SIGNS[r] < 0 ? '−' : '') + n, V(lx, LY.feat, zc(1, r)), 'lbl row');    });
+const FLIPB = [];
 SIGNS.forEach((s, r) => { if (s < 0) FLIPB.push(edgeBox(-NP * TS, .02, LY.feat - .07, LY.feat + .07, zc(1, r) - ZP * .5, zc(1, r) + ZP * .5, '#ffcf6e', .9)); });
-const forkPts = [V(0, LY.in + .08, 0), V(0, LY.in + .6, .15), V(0, LY.feat - .08, zc(0, 3))], forkT = tube(forkPts, '#e07a5f', .014);   // forkT: tour anchor
+const forkPts = [V(0, LY.in + .08, 0), V(0, LY.in + .6, .15), V(0, LY.feat - .08, zc(0, 3))], forkT = tube(forkPts, '#e07a5f', .014);
 tube([V(0, LY.in + .08, 0), V(0, LY.in + .6, -.15), V(0, LY.feat - .08, zc(1, 3))], '#e07a5f', .014);
 label('mirror copy: flip ωy ωz gx', V(.2, (LY.in + LY.feat) / 2, -.55), 'lbl');
 
-// projection 7 -> 32 (one weight matrix used by both streams)
 stageGroup('proj');
 SL.proj = slab({ rows: 32, cols: NP, sheets: 2, y: LY.proj, zf: zc, stage: 'proj' });
-label('Projection 7→32 + ReLU', V(0, LY.proj, Z0 + 32 * ZP + 1.35), 'lbl stage', 'proj');   // viz-look P1: one line higher, clear of the Block 1 name
+label('Projection 7→32 + ReLU', V(0, LY.proj, Z0 + 32 * ZP + 1.35), 'lbl stage', 'proj');
 label('projection output', V(-NP * TS - .4, LY.proj, Z0 + 32 * ZP + .3), 'lbl layer v');
 const projPairs = [];
 for (let s = 0; s < 2; s++) for (let o = 0; o < 32; o++) for (let i = 0; i < 7; i++) projPairs.push([V(0, LY.feat, zc(s, i)), V(0, LY.proj, zc(s, o))]);
 const projLines = lineSet(projPairs);
 label('[1,7,2,1] → [1,32,2,1]', V(.25, (LY.feat + LY.proj) / 2, 1.6), 'lbl v');
 
-// three blocks
 const BL = [];
 for (let b = 0; b < 3; b++) {
   stageGroup('blk' + b);
@@ -260,30 +216,28 @@ for (let b = 0; b < 3; b++) {
   const out = slab({ rows: 32, cols: NP, sheets: 2, y: LY.out(b), zf: zc, stage: 'blk' + b });
   const dw = slab({ rows: 32, cols: 1, sheets: 2, y: LY.dw(b), zf: zc, x0: CX, stage: 'blk' + b, h: .07 });
   const upd = slab({ rows: 32, cols: 1, sheets: 2, y: LY.upd(b), zf: zc, x0: CX, stage: 'blk' + b, h: .07 });
-  const mem = edgeBox(-span - TS / 2, -TS / 2, yi - .09, yi + .09, -zMax, zMax, '#b7a8ff', .75);   // state_in_b: the 7d past inputs only
-  edgeBox(-TS / 2, TS / 2, yi - .1, yi + .1, -zMax - .01, zMax + .01, '#ffffff', .6);       // the current input, computed this call
-  for (let j = 0; j < 8; j++) { const x = -(7 - j) * d * TS; edgeBox(x - TS * .6, x + TS * .6, yi - .11, yi + .11, -zMax - .02, zMax + .02, '#b7a8ff', .55); }   // viz-look P1: quieter outlines
-  label(`memory: last ${7 * d} inputs`, V(-span / 2 - (d === 1 ? .55 : 0), yi + .22, zMax + .05), 'lbl'); label('now', V(d === 1 ? .12 : 0, yi + .22, zMax + .05 + (d === 1 ? .12 : 0)), 'lbl');   // round 8: Block 1's label sits left of the box, "now" right
-  // dilation made explicit: offset labels at every tap and a bright guide line from each tap into the block
-  const TAPC = '#b7a8ff';                           // viz-look P1: one violet for taps and memory in every block (was cyan / violet / pink per block)
+  const mem = edgeBox(-span - TS / 2, -TS / 2, yi - .09, yi + .09, -zMax, zMax, '#b7a8ff', .75);
+  edgeBox(-TS / 2, TS / 2, yi - .1, yi + .1, -zMax - .01, zMax + .01, '#ffffff', .6);
+  for (let j = 0; j < 8; j++) { const x = -(7 - j) * d * TS; edgeBox(x - TS * .6, x + TS * .6, yi - .11, yi + .11, -zMax - .02, zMax + .02, '#b7a8ff', .55); }
+  label(`memory: last ${7 * d} inputs`, V(-span / 2 - (d === 1 ? .55 : 0), yi + .22, zMax + .05), 'lbl'); label('now', V(d === 1 ? .12 : 0, yi + .22, zMax + .05 + (d === 1 ? .12 : 0)), 'lbl');
+  const TAPC = '#b7a8ff';
   if (d > 1) for (let j = 0; j < 7; j++) if (d > 8 || j % 3 === 0) label(`−${(7 - j) * d}`, V(-(7 - j) * d * TS, yi + .02, zMax + .22), 'lbl tap', null);
   const srcName = b === 0 ? 'the projection output' : `Block ${b}'s output`;
   label(`taps ${d * 10} ms apart`, V(-span / 2, yi + .02, zMax + .55), 'lbl tap v');
   const guide = [];
   for (let s = 0; s < 2; s++) for (let j = 0; j < 8; j++) guide.push([V(-(7 - j) * d * TS, yi, zc(s, 31) + (s ? -1 : 1) * .06), V(CX, LY.dw(b), zc(s, 31) + (s ? -1 : 1) * .06)]);
   const gl = lineSet(guide); gl.userData.static = true; guide.forEach((_, i) => gl.paint(i, new THREE.Color(TAPC), 1)); gl.done();
-  const tapM = [];   // the 8 tap markers (kept for the beginner tour)
+  const tapM = [];
   for (let j = 0; j < 8; j++) { const x = -(7 - j) * d * TS; const m = new THREE.Mesh(new THREE.BoxGeometry(TS * 1.1, .03, 2 * zMax + .1), new THREE.MeshBasicMaterial({ color: TAPC, transparent: true, opacity: .55 })); m.position.set(x, yi + .12, 0); add(m); tapM.push(m); }
   const dwPairs = [];
   for (let s = 0; s < 2; s++) for (let c = 0; c < 32; c++) for (let j = 0; j < 8; j++) dwPairs.push([V(-(7 - j) * d * TS, yi, zc(s, c)), V(CX, LY.dw(b), zc(s, c))]);
-  const selfPairs = [], selfMeta = [], crossPairs = [], crossMeta = [];   // self = A (own stream, solid), cross = B (twin stream, dashed, through the mirror)
+  const selfPairs = [], selfMeta = [], crossPairs = [], crossMeta = [];
   for (let so = 0; so < 2; so++) for (let si = 0; si < 2; si++) for (let o = 0; o < 32; o++) for (let c = 0; c < 32; c++) {
     const pr = [V(CX, LY.dw(b), zc(si, c)), V(CX, LY.upd(b), zc(so, o))];
     if (so === si) { selfPairs.push(pr); selfMeta.push([so, si, o, c]); } else { crossPairs.push(pr); crossMeta.push([so, si, o, c]); } }
   const upPairs = []; for (let s = 0; s < 2; s++) for (let c = 0; c < 32; c++) upPairs.push([V(CX, LY.upd(b), zc(s, c)), V(0, LY.out(b), zc(s, c))]);
   const skipT = [];
   const skipPts = [0, 1].map(s => { const z = zc(s, 16), p = [V(0, yi + .06, z), V(-.25, (yi + LY.out(b)) / 2, z), V(0, LY.out(b) - .06, z)]; skipT.push(tube(p, '#8390a8', .014, .9)); return new THREE.CatmullRomCurve3(p).getPoints(24); });
-  // one-call animation props (hidden until "One call"): flash on the new input, fade on the column that leaves the memory, ⊕ at the skip join
   const flash = new THREE.Mesh(new THREE.BoxGeometry(TS * 1.6, .26, 2 * zMax + .08), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
   flash.position.set(0, yi, 0); flash.visible = false; add(flash);
   const leave = new THREE.Mesh(new THREE.BoxGeometry(TS * 1.6, .26, 2 * zMax + .08), new THREE.MeshBasicMaterial({ color: '#ff6b5e', transparent: true, opacity: 0, depthWrite: false }));
@@ -291,12 +245,11 @@ for (let b = 0; b < 3; b++) {
   const bi = b;
   condLabel('⊕ skip + mix, then ReLU', V(-.2, LY.out(b) - .2, zMax + .35), 'lbl', () => CALL && CALL.b === bi && CALL.ph >= 3);
   condLabel(`t−${7 * d} leaves the memory · now joins it`, V(-7 * d * TS, yi - .3, zMax + .35), 'lbl', () => CALL && CALL.b === bi && CALL.ph >= 4);
-  // picked channel: its 8 tap cells and its depthwise node, outlined
   const pickBoxes = Array.from({ length: 8 }, (_, j) => { const x = -(7 - j) * d * TS, e = edgeBox(x - TS * .75, x + TS * .75, yi - .09, yi + .09, -ZP * .6, ZP * .6, '#ffffff', 1); e.visible = false; return e; });
   const pickNode = edgeBox(CX - TS * .75, CX + TS * .75, LY.dw(b) - .07, LY.dw(b) + .07, -ZP * .6, ZP * .6, '#ffffff', 1); pickNode.visible = false;
-  label(`Block ${b + 1}`, V(CX, (yi + LY.out(b)) / 2, Z0 + 32 * ZP + .85), 'lbl stage', 'blk' + b);   // viz-look P1: above the tap offsets (−8 …), which sit at + .22
+  label(`Block ${b + 1}`, V(CX, (yi + LY.out(b)) / 2, Z0 + 32 * ZP + .85), 'lbl stage', 'blk' + b);
   label(`Block ${b + 1} output`, V(-NP * TS - .4, LY.out(b), Z0 + 32 * ZP + .3), 'lbl layer v');
-  { const br = []; for (const z of [Z0 + 32 * ZP + .3]) br.push([V(CX, yi + .05, z), V(CX, LY.out(b) - .05, z)]);   // bracket: this block spans from its input layer to its output layer
+  { const br = []; for (const z of [Z0 + 32 * ZP + .3]) br.push([V(CX, yi + .05, z), V(CX, LY.out(b) - .05, z)]);
     const bl = lineSet(br); bl.userData.static = true; bl.paint(0, new THREE.Color(TAPC), .6); bl.done(); }
   label(`8 taps, ${d} apart`, V(CX + .3, LY.dw(b), 2.1), 'lbl'); label('mix channels', V(CX + .3, LY.upd(b), 2.1), 'lbl v'); label('skip connection', V(-.35, (yi + LY.out(b)) / 2, 2.1), 'lbl');
   BL.push({ mem, tapM, skipT, zMax, out, dw, upd, d, yi, guide, tapc: TAPC, skipPts, flash, leave, pickBoxes, pickNode, dwLines: lineSet(dwPairs), selfLines: lineSet(selfPairs), crossLines: lineSet(crossPairs, .9, true), selfMeta, crossMeta, upLines: lineSet(upPairs, .5) });
@@ -304,7 +257,6 @@ for (let b = 0; b < 3; b++) {
 
 inGroup('links', () => { const band = new THREE.Mesh(new THREE.PlaneGeometry(.42, LY.head + .3 - LY.feat), new THREE.MeshBasicMaterial({ color: '#6fa8ff', transparent: true, opacity: .035, side: THREE.DoubleSide, depthWrite: false }));
   band.position.set(CX, (LY.feat + LY.head + .3) / 2, Z0 + 32 * ZP + .15); add(band); label('compute lane (not time)', V(CX, LY.head + .45, Z0 + 32 * ZP + .15), 'lbl v'); });
-// receptive-field tree drawn on the mirror plane (the dilated tree of the master diagram)
 stageGroup('tree');
 const treePairs = [];
 for (let j = 0; j < 8; j++) { const x3 = -(7 - j) * 47 * TS; treePairs.push([V(0, LY.out(2), 0), V(x3, LY.out(1), 0)]);
@@ -314,19 +266,17 @@ const treeLines = lineSet(treePairs, .9); treeLines.userData.static = true;
 treePairs.forEach((_, i) => treeLines.paint(i, new THREE.Color('#9b8cff'), .35)); treeLines.done();
 label('one output sees 393 feature steps (3.93 s)', V(-393 * TS / 2, LY.out(1) - .5, 0), 'lbl');
 
-// head: 2 x 32 -> 9 coefficients
 stageGroup('head');
 const coefX = p => .22 + p * .12, coefZ = a => zr(a, 3, .14);
 SL.coef = slab({ rows: 3, cols: 3, y: LY.head, zf: (s, a) => coefZ(a), x0: coefX(0), dx: .12, h: .12, stage: 'head' });
-label('Readout', V(coefX(1), LY.head, coefZ(0) - .32), 'lbl stage', 'head');   // viz-look P1: under the 3×3 grid, clear of its row and column names
-['κ', 'κ²', 'κ³'].forEach((t, p) => label(t, V(coefX(p), LY.head, coefZ(2) + .15), 'lbl ax'));      // columns = basis power, rows = axis (7.2)
+label('Readout', V(coefX(1), LY.head, coefZ(0) - .32), 'lbl stage', 'head');
+['κ', 'κ²', 'κ³'].forEach((t, p) => label(t, V(coefX(p), LY.head, coefZ(2) + .15), 'lbl ax'));
 ['x', 'y', 'z'].forEach((t, a) => label(t, V(coefX(0) - .14, LY.head, coefZ(a)), 'lbl ax'));
 const headPairs = [], headMeta = [];
 for (let s = 0; s < 2; s++) for (let p = 0; p < 3; p++) for (let a = 0; a < 3; a++) for (let c = 0; c < 32; c++) {
   headPairs.push([V(0, LY.out(2), zc(s, c)), V(coefX(p), LY.head, coefZ(a))]); headMeta.push([s, p, a, c]); }
 const headLines = lineSet(headPairs);
 
-// trajectory: damped-velocity prior + learned residual = r, 20 future steps
 stageGroup('traj');
 const fut = { x0: TS, dx: TS, zf: (s, a) => zr(a, 3, .1), h: .09 };
 SL.prior = slab({ rows: 3, cols: H, y: LY.prior, ...fut, stage: 'traj' });
@@ -336,17 +286,14 @@ label('Trajectory', V(.25, LY.r + .45, 0), 'lbl stage', 'traj');
 label('damped-velocity prior', V(-.55, LY.prior, 0), 'lbl'); label('learned residual', V(-.6, LY.corr, 0), 'lbl'); label('r = prior + residual', V(-.5, LY.r, 0), 'lbl');
 tube([V(coefX(1), LY.head + .08, 0), V(.62, (LY.head + LY.corr) / 2, 0), V(.52, LY.corr, 0)], '#f0b24a', .012);
 
-// forecast: continues the input ribbon into the future, truth just below
 stageGroup('out');
 SL.pred = slab({ rows: 4, cols: H, y: FY, x0: TS, dx: TS, zf: (s, r) => zr(r, 4), stage: 'out' });
 SL.truth = slab({ rows: 4, cols: H, y: FY + .25, x0: TS, dx: TS, zf: (s, r) => zr(r, 4), h: .07, stage: 'out' });
 label('Forecast', V(0, FY, .6), 'lbl stage', 'out');
 SL.err = slab({ rows: 1, cols: H, y: FY + .45, x0: TS, dx: TS, zf: () => 0, h: .07, stage: 'out' });
 label('predicted', V(.62, FY, -.3), 'lbl'); label('true', V(.62, FY + .25, -.3), 'lbl'); label('error per step', V(.7, FY + .45, -.3), 'lbl');
-// the one column the challenge scores: step 20 = 200 ms (x = 20·TS) (10.1)
 const scoredBox = edgeBox(20 * TS - TS * .7, 20 * TS + TS * .7, FY - .08, FY + .51, -.2, .2, '#ffffff', .95);
 label('scored: step 20 = 200 ms', V(20 * TS, FY + .25, .32), 'lbl');
-// all from now (9.1): 20 thin arcs, each rooted at "now" (x = 0), one per forecast column; no step builds on the previous one
 { const seg = []; for (let k = 1; k <= H; k++) { const e = V(k * TS, FY, .16), c = V(k * TS / 2, FY, .2 + .006 * k); let p0 = V(0, FY, .16);
     for (let i = 1; i <= 10; i++) { const t = i / 10, p = V(0, FY, .16).multiplyScalar((1 - t) ** 2).add(c.clone().multiplyScalar(2 * t * (1 - t))).add(e.clone().multiplyScalar(t * t)); seg.push(p0, p); p0 = p; } }
   const a = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(seg), new THREE.LineBasicMaterial({ color: '#6fa8ff', transparent: true, opacity: .4 })); add(a);
@@ -358,19 +305,11 @@ label('current pose q[t]', V(.3, (LY.in + FY) / 2, -2.8), 'lbl v');
 inGroup('traj', () => { tube([V(0, LY.feat + .05, zc(0, 1)), V(.95, LY.feat + .3, zc(0, 1)), V(.95, LY.prior - .3, 0), V(.5, LY.prior, 0)], '#e58bb0', .012, .6, true);
   label('turning rate ω → prior', V(.95, 3.2, -.2), 'lbl v'); });
 
-// gaze sphere
 const G = new THREE.Group(); G.position.set(FY + 3.4, 0, 0); scene.add(G); GROUPS.gaze = G;
 G.add(new THREE.Mesh(new THREE.SphereGeometry(1.5, 32, 16), new THREE.MeshBasicMaterial({ color: '#2c2c2c', wireframe: true, transparent: true, opacity: .3 })));
 const headM = new THREE.Group(); G.add(headM);
-// a simple VR headset; its front faces local −z, which is the headset's forward (Unity +z) in three.js
-// P1 head model (head3d.js, mesh from assets/head.js made in Blender): the headset turns rigidly inside headM, as the old box did (face along
-// local −z, up +y). Head, neck and shoulders are ONE skin in bustM, which does not turn: HEAD.pose(q) bends it, so the neck follows smoothly.
-// .45: a whole head is much bigger than the old box, and the camera of the Head direction step stands close behind it.
-// If assets/head.js did not load, the old box headset is built instead.
 const bustM = new THREE.Group(); G.add(bustM);
-const HEAD = makeHead(), HEAD0 = makeHead();   // HEAD0: the bigger copy at the Input step
-// 06c (new head, incoming/head/README.md): the headset (rig) and the skin both sit in bustM, which does not turn; HEAD.pose(q, bodyRef()) bends
-// the neck and places the headset. headM itself is now empty: it only carries the rotation (wear view, tour anchor, __k8.headQuat()).
+const HEAD = makeHead(), HEAD0 = makeHead();
 if (HEAD) { bustM.add(HEAD.rig, HEAD.skin); headM.scale.setScalar(.45); bustM.scale.setScalar(.45); }
 else {
   const hsBody = new THREE.Mesh(new RoundedBoxGeometry(.62, .34, .3, 4, .07), new THREE.MeshLambertMaterial({ color: '#d9dee8' })); hsBody.position.z = -.04; headM.add(hsBody);
@@ -379,13 +318,12 @@ else {
   const hsTop = new THREE.Mesh(new THREE.TorusGeometry(.2, .022, 8, 32, Math.PI), new THREE.MeshLambertMaterial({ color: '#3a4458' })); hsTop.rotation.set(0, Math.PI / 2, 0); hsTop.position.set(0, .1, .06); headM.add(hsTop);
   const hsLed = new THREE.Mesh(new THREE.SphereGeometry(.018, 10, 8), new THREE.MeshBasicMaterial({ color: '#6fa8ff' })); hsLed.position.set(.2, .08, -.23); headM.add(hsLed);
 }
-// direction arrows: white ray = looking now; blue / green arcs along the sphere = turn to the predicted / true pose at 200 ms (true scale)
 const gazeRay = new THREE.Line(new THREE.BufferGeometry().setFromPoints([V(0, 0, 0), V(0, 0, -1.5)]), new THREE.LineBasicMaterial({ color: '#e6ebf2' })); G.add(gazeRay);
 function arcArrow(color, cone = true, opacity = 1) {
   const n = 24, line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(Array.from({ length: n }, () => V(0, 0, 0))), new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity }));
   const head = new THREE.Mesh(new THREE.ConeGeometry(.05, .14, 12), new THREE.MeshBasicMaterial({ color })); G.add(line); if (cone) G.add(head);
   const up = V(0, 1, 0), q = new THREE.Quaternion();
-  return (a, b) => {                                // great-circle arc from unit vector a to b, radius 1.5, cone at the end along the tangent
+  return (a, b) => {
     const ang = a.angleTo(b), pos = line.geometry.attributes.position;
     for (let i = 0; i < n; i++) { const t = i / (n - 1), p = ang < 1e-6 ? a.clone() : a.clone().multiplyScalar(Math.sin((1 - t) * ang)).add(b.clone().multiplyScalar(Math.sin(t * ang))).divideScalar(Math.sin(ang)); pos.setXYZ(i, p.x * 1.5, p.y * 1.5, p.z * 1.5); }
     pos.needsUpdate = true; line.geometry.computeBoundingSphere();
@@ -394,32 +332,28 @@ function arcArrow(color, cone = true, opacity = 1) {
   };
 }
 const predArc = arcArrow('#6fa8ff'), truthArc = arcArrow('#4fd18b');
-const fanArcs = Array.from({ length: H }, () => arcArrow('#6fa8ff', false, .3));   // 9.1: one thin arc from now to every predicted step
-const upOf = q => { const [w, x, y, z] = q; return V(2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x)); };   // R(q)·(0,1,0)
+const fanArcs = Array.from({ length: H }, () => arcArrow('#6fa8ff', false, .3));
+const upOf = q => { const [w, x, y, z] = q; return V(2 * (x * y - w * z), 1 - 2 * (x * x + z * z), 2 * (y * z + w * x)); };
 function rollTick(color) { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([V(0, 0, 0), V(0, 0, 0)]), new THREE.LineBasicMaterial({ color })); G.add(l);
   return (q) => { const tip = toScene(fwd(q)).normalize().multiplyScalar(1.5), up = toScene(upOf(q)).normalize().multiplyScalar(.18), a = l.geometry.attributes.position;
     a.setXYZ(0, tip.x, tip.y, tip.z); a.setXYZ(1, tip.x + up.x, tip.y + up.y, tip.z + up.z); a.needsUpdate = true; l.geometry.computeBoundingSphere(); }; }
 const predTick = rollTick('#6fa8ff'), truthTick = rollTick('#4fd18b');
 const dotG = new THREE.SphereGeometry(.02, 12, 8), mk = c => { const m = new THREE.Mesh(dotG, new THREE.MeshBasicMaterial({ color: c })); G.add(m); return m; };
-const dotT = new THREE.OctahedronGeometry(.024), mkT = c => { const m = new THREE.Mesh(dotT, new THREE.MeshBasicMaterial({ color: c })); G.add(m); return m; };   // round 8 (a11y F15): true = diamonds
-const predDots = Array.from({ length: H }, () => mk('#6fa8ff')), truthDots = Array.from({ length: H }, () => mkT('#4fd18b')), pastDots = Array.from({ length: 41 }, () => mk('#5b6780'));   // now and 40 samples back = 400 ms
-predDots[H - 1].scale.setScalar(2.2); truthDots[H - 1].scale.setScalar(2.2);                 // 11.3: the scored step-20 dots stand out
+const dotT = new THREE.OctahedronGeometry(.024), mkT = c => { const m = new THREE.Mesh(dotT, new THREE.MeshBasicMaterial({ color: c })); G.add(m); return m; };
+const predDots = Array.from({ length: H }, () => mk('#6fa8ff')), truthDots = Array.from({ length: H }, () => mkT('#4fd18b')), pastDots = Array.from({ length: 41 }, () => mk('#5b6780'));
+predDots[H - 1].scale.setScalar(2.2); truthDots[H - 1].scale.setScalar(2.2);
 label('Head direction', V(0, 1.85, 0), 'lbl stage', 'gaze', G);
 label('<span style="color:#e6ebf2">│</span> now <span style="color:#5b6780">●</span> past 400 ms <span style="color:#6fa8ff">●→</span> predicted <span style="color:#4fd18b">●→</span> true', V(0, -1.8, 0), 'lbl', null, G);
 CUR = null;
 const HS0 = new THREE.Group(), hs0 = HEAD0 ? new THREE.Group() : headM.clone(); hs0.scale.setScalar(HEAD0 ? 1.7 : 2.4); HS0.add(hs0); const hsBody0 = new THREE.Group(); if (HEAD0) { hsBody0.scale.setScalar(1.7); hsBody0.add(HEAD0.rig, HEAD0.skin); HS0.add(hsBody0); } HS0.position.copy(W(1.5, LY.in, 1.7)); HS0.visible = false; scene.add(HS0);
 let HSL = null; inGroup('input', () => { HSL = condLabel('the headset at “now”', V(1.5, LY.in, 2.55), 'lbl', () => build === 0); });
-const fwd = q => { const [w, x, y, z] = q; return V(2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)); };   // R(q)·(0,0,1)
-const toScene = v => V(v.x, v.y, -v.z);        // Unity left-handed -> three right-handed (display only)
+const fwd = q => { const [w, x, y, z] = q; return V(2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)); };
+const toScene = v => V(v.x, v.y, -v.z);
 
-// compression lens (round 6): a 2D panel in the card (compressionCard); the 3D cubes, ghost outlines and long labels are gone. CL stays as an empty group.
 const CL = new THREE.Group(); CL.visible = false; MODEL.add(CL);
 
-// ================================================================ per-frame update
 let idx = 0;
 const cP = new THREE.Color('#ffb454'), cN = new THREE.Color('#4ea1ff'), cErr = new THREE.Color('#ff6b5e');
-// round 6 (perf rank 2): update() paints only outputs that are actually shown; each painted output is stamped with UPD.
-// The loop catches up (anyStale → update) before it renders a frame in which a shown output carries an older stamp, so nothing revealed is stale.
 let UPD = 0, OUTS = null;
 const shownNow = o => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
 const stamp = (...os) => { for (const o of os) o.userData.upd = UPD; };
@@ -434,40 +368,38 @@ function update() {
   UPD++;
   const f = D.frames[idx], layers = [SL.proj, BL[0].out, BL[1].out, BL[2].out], lsc = [S.proj, ...S.blk];
   const vIn = shownNow(SL.input), vFeat = shownNow(SL.feat), vL = layers.map(shownNow);
-  const fM = build >= 0 && /^blk(\d)$/.exec(STEPS[build]), fL = fM ? +fM[1] : -1, fSpan = fL >= 0 ? 7 * DIL[fL] : 0;   // round 11: what the block does not read this call
-  // P1 (viz-perf): the six history walls are painted from a per-trace colour cache (histPaint, below): same colours, bit for bit, but each one is worked out once
+  const fM = build >= 0 && /^blk(\d)$/.exec(STEPS[build]), fL = fM ? +fM[1] : -1, fSpan = fL >= 0 ? 7 * DIL[fL] : 0;
   if (vIn) histPaint(SL.input, 4, (g, r) => divColor(g.q[r], 1), LIVE.input, null);
   if (vFeat) histPaint(SL.feat, 14, (g, k) => g.feat ? divColor(g.feat[k % 7] * (k >= 7 ? SIGNS[k % 7] : 1), featScale(k % 7)) : null, LIVE.feat, null);
   for (let L = 0; L < 4; L++) if (vL[L]) histPaint(layers[L], 64, (g, k) => { const a = L === 0 ? g.proj : g.blk[L - 1]; return a ? divColor(a[k >> 5][k & 31], lsc[L]) : null; },
-    fL >= 0 && L === fL + 1 ? Math.min([LIVE.proj, LIVE.blk0, LIVE.blk1, LIVE.blk2][L], fSpan + 12) : [LIVE.proj, LIVE.blk0, LIVE.blk1, LIVE.blk2][L], L === fL ? fSpan : fL >= 0 && L === fL + 1 ? fSpan + 12 : null);   // viz-look P1: the focused block's own output wall fades the same way just past its span, so old outputs do not outshine the block
+    fL >= 0 && L === fL + 1 ? Math.min([LIVE.proj, LIVE.blk0, LIVE.blk1, LIVE.blk2][L], fSpan + 12) : [LIVE.proj, LIVE.blk0, LIVE.blk1, LIVE.blk2][L], L === fL ? fSpan : fL >= 0 && L === fL + 1 ? fSpan + 12 : null);
   [SL.input, SL.feat, ...layers].forEach((m, i) => { if ([vIn, vFeat, ...vL][i]) { m.instanceColor.needsUpdate = true; stamp(m); } });
   const mir = [f.feat, f.feat.map((v, i) => v * SIGNS[i])]; let k = 0;
   if (shownNow(projLines)) {
-  for (let s = 0; s < 2; s++) for (let o = 0; o < 32; o++) for (let i = 0; i < 7; i++) { const v = D.W.proj[o][i] * mir[s][i] / featScale(i); const pp = U.ppick, on = !ONE || s === 0, lit = !pp || (pp.s === s && pp.o === o);   // a picked channel keeps only its own 7 lines
+  for (let s = 0; s < 2; s++) for (let o = 0; o < 32; o++) for (let i = 0; i < 7; i++) { const v = D.W.proj[o][i] * mir[s][i] / featScale(i); const pp = U.ppick, on = !ONE || s === 0, lit = !pp || (pp.s === s && pp.o === o);
     projLines.paint(k++, v >= 0 ? cP : cN, on && lit ? Math.abs(v) * (pp ? 3 : .9) : 0); }
   projLines.done(); stamp(projLines); }
   for (let b = 0; b < 3; b++) {
     const B = BL[b], d = B.d, w = D.W.dw[b], sc = b === 0 ? S.proj : S.blk[b - 1];
     if (![B.dw, B.upd, B.dwLines, B.selfLines, B.crossLines, B.upLines].some(shownNow)) continue;
     stamp(B.dw, B.upd, B.dwLines, B.selfLines, B.crossLines, B.upLines);
-    const h = depthwise(b, idx), u = relu(pointwise(b, h)), hs = S.dw[b], us = S.upd[b];     // trace-wide scales, comparable across frames
+    const h = depthwise(b, idx), u = relu(pointwise(b, h)), hs = S.dw[b], us = S.upd[b];
     for (let s = 0; s < 2; s++) for (let r = 0; r < 32; r++) { B.dw.set(s, r, 0, divColor(h[s][r], hs)); B.upd.set(s, r, 0, divColor(u[s][r], us)); }
     B.dw.instanceColor.needsUpdate = B.upd.instanceColor.needsUpdate = true;
     k = 0;
-    const pk = PICK && PICK.b === b ? PICK : null;          // 5.2: a picked channel keeps only its own 8 tap lines lit
+    const pk = PICK && PICK.b === b ? PICK : null;
     for (let s = 0; s < 2; s++) for (let c = 0; c < 32; c++) for (let j = 0; j < 8; j++) { const x = blockIn(b, idx - (7 - j) * d), v = x ? w[c][j] * x[s][c] / sc : 0;
       B.dwLines.paint(k++, v >= 0 ? cP : cN, (ONE && s) || (pk && (pk.s !== s || pk.c !== c)) ? 0 : Math.abs(v) * (pk ? (pk.tap === j ? 6 : 3) : 1.1)); }
     B.dwLines.done();
     const { A, B: Bm } = D.W.pw[b];
-    // brightness = |weight × input| / trace scale, sign by hue; lines into outputs that ReLU zeroes this step are dimmed
-    const gm = GMIX && GMIX.b === b ? GMIX : null;   // round 5: a guide shot lights only the lines into one h⁰ output channel (A solid, B dashed)
+    const gm = GMIX && GMIX.b === b ? GMIX : null;
     const pwPaint = (set, meta, W) => { meta.forEach(([so, si, o, c], i) => { const v = W[o][c] * h[si][c] / hs;
       set.paint(i, v >= 0 ? cP : cN, ONE && (so || si) ? 0 : gm ? (so === 0 && o === gm.o ? Math.max(.25, Math.abs(v) * 1.6) : 0) : Math.abs(v) * .2 * (u[so][o] > 0 ? 1 : .05)); }); set.done(); };
     pwPaint(B.selfLines, B.selfMeta, A); pwPaint(B.crossLines, B.crossMeta, Bm);
     for (let s = 0, i = 0; s < 2; s++) for (let c = 0; c < 32; c++, i++) B.upLines.paint(i, cP, ONE && s ? 0 : u[s][c] / us * .6);
     B.upLines.done();
   }
-  if (shownNow(headLines)) { stamp(headLines); headMeta.forEach(([s, p, a, c], i) => { let v = D.W.head[p * 3 + a][c] * f.blk[2][s][c] / S.blk[2]; if (s === 1 && a > 0) v = -v; const hp = U.hpick, lit = !hp || (hp.p === p && hp.a === a);   // a picked coefficient keeps only its 64 lines
+  if (shownNow(headLines)) { stamp(headLines); headMeta.forEach(([s, p, a, c], i) => { let v = D.W.head[p * 3 + a][c] * f.blk[2][s][c] / S.blk[2]; if (s === 1 && a > 0) v = -v; const hp = U.hpick, lit = !hp || (hp.p === p && hp.a === a);
     headLines.paint(i, v >= 0 ? cP : cN, (ONE && s) || !lit ? 0 : Math.abs(v) * (hp ? 3 : 1.4)); });
   headLines.done(); }
   if (shownNow(SL.coef)) { stamp(SL.coef); for (let p = 0; p < 3; p++) for (let a = 0; a < 3; a++) SL.coef.set(0, a, p, divColor(f.coef[p][a], S.coef));
@@ -490,16 +422,11 @@ function update() {
   scrub.value = idx;
   drawInset(); requestRender();
 }
-// P1 (viz-perf): history-wall colour cache. A cell's colour depends only on (frame, row) and on which of three brightness variants it is drawn in,
-// never on the sample on screen. So each (frame, variant) is computed once per trace with the original code and stored as the same Float32 values
-// setColorAt would write; update() then copies runs of bytes. Variants: 0 = still held by the model, 1 = no longer held (25%),
-// 2 = not read by the focused block this call (25%, then × .08). Rows are stored newest-first (position F-1-frame) and end with NP 'no data' entries,
-// so the 400 columns of one row are one contiguous run of the cache. Cost: up to 1.45 MB per 64-row wall per variant, allocated on first use.
-let HGEN = 0;                                        // bumped by prepare(): a new trace has new values and new scales
-function histPaint(mesh, R, cell, live, fadeFrom) {  // cell(frame, row) → a Color, or null when that frame has no value here
+let HGEN = 0;
+function histPaint(mesh, R, cell, live, fadeFrom) {
   const F = D.frames.length, P = F + NP, dst = mesh.instanceColor.array, p0 = F - 1 - idx;
   let hc = mesh.userData.hc; if (!hc || hc.gen !== HGEN) hc = mesh.userData.hc = { gen: HGEN, v: [] };
-  const part = (v, c0, c1) => {                      // columns c0 .. c1-1 in variant v
+  const part = (v, c0, c1) => {
     if (c1 <= c0) return;
     const Hc = hc.v[v] || (hc.v[v] = { a: new Float32Array(R * P * 3), ok: new Uint8Array(P) });
     for (let c = c0; c < c1; c++) { const p = p0 + c; if (Hc.ok[p]) continue; Hc.ok[p] = 1; const g = D.frames[idx - c];
@@ -512,18 +439,15 @@ function histPaint(mesh, R, cell, live, fadeFrom) {  // cell(frame, row) → a C
   const L1 = Math.min(NP, live + 1), L2 = fadeFrom == null ? NP : Math.min(NP, Math.max(L1, fadeFrom + 1));
   part(0, 0, L1); part(1, L1, L2); part(2, L2, NP);
 }
-function gazeUpdate(f, nowD, pD, tD) {             // the gaze scene: dots, past trail, now ray, arcs, roll ticks (only while it is shown)
+function gazeUpdate(f, nowD, pD, tD) {
   for (let t = 0; t < H; t++) { predDots[t].position.copy(toScene(fwd(f.pred[t])).multiplyScalar(1.5)); truthDots[t].position.copy(toScene(fwd(f.truth[t])).multiplyScalar(1.5)); }
   pastDots.forEach((m, j) => { const g = D.frames[idx - j]; m.visible = !!g; if (g) m.position.copy(toScene(fwd(g.q)).multiplyScalar(1.5)); });
   gazeRay.geometry.attributes.position.setXYZ(1, nowD.x * 1.5, nowD.y * 1.5, nowD.z * 1.5); gazeRay.geometry.attributes.position.needsUpdate = true;
   predArc(nowD, pD); truthArc(nowD, tD); fanArcs.forEach((a, t) => a(nowD, toScene(fwd(f.pred[t])).normalize())); predTick(f.pred[19]); truthTick(f.truth[19]);
 }
 
-// ================================================================ round 2: per-step insets (rendered by insets.js from the current frame's real values) wired to the 3D
 const insetEl = document.getElementById('inset'), captionEl = document.getElementById('caption');
 let insetStatic = null, insetHTML = '';
-// round 6 (perf rank 4): keep the inset DOM mounted. The new markup is parsed off-document and the live tree is patched node by node
-// (text, attributes, added / removed nodes), so the result equals an innerHTML rebuild; an identical string does no DOM work at all.
 const _tpl = document.createElement('template');
 function morphHTML(el, html) { _tpl.innerHTML = html; morphKids(el, _tpl.content); }
 function morphKids(a, b) {
@@ -546,48 +470,60 @@ function drawInset() {
   if (f && key && RENDER[key]) {
     if (key === 'reach' && insetStatic === 'reach' && insetEl.classList.contains('show')) return;
     U.pick = PICK; U.swapped = swapped;
-    const bx = RAW && RAW.weights.head_bias_x ? RAW.weights.head_bias_x.values : null;      // ONNX /Constant_53: b_x, one per basis power, x axis only
+    const bx = RAW && RAW.weights.head_bias_x ? RAW.weights.head_bias_x.values : null;
     html = K.R[RENDER[key]]({ D, idx, U, S, bx, b: /^blk\d$/.test(key) ? +key[3] : 0, now: performance.now(), reduce });
-    if (guideInset) html = guideInset(f) || html;   // a guide shot's own inset (readout: 3 curves → 1), live with playback
+    if (guideInset) html = guideInset(f) || html;
   }
   insetStatic = key === 'reach' && html ? 'reach' : null;
-  // round 8: the inset sits in #side under the key (no top fix-up). Charts and heatmaps get a keyboard path (a11y F7, F17).
-  if (html) html = html.replace(/<svg width="([\d.]+)" height="([\d.]+)"(?![^>]*viewBox)/g, '<svg width="$1" height="$2" viewBox="0 0 $1 $2"')   // round 10: scale to the panel
-    .replace(/font-size="(8|8\.5|9)"/g, 'font-size="9.5"');   // ≥ 12 px once scaled to the 410 px panel
+  if (html) html = html.replace(/<svg width="([\d.]+)" height="([\d.]+)"(?![^>]*viewBox)/g, '<svg width="$1" height="$2" viewBox="0 0 $1 $2"')
+    .replace(/font-size="(8|8\.5|9)"/g, 'font-size="9.5"');
   if (html) html = html.replace(/<rect data-grid="/g, '<rect tabindex="0" role="button" aria-label="heatmap: arrow keys move the selected cell" data-grid="').replace(/ data-hx="/g, ' tabindex="0" aria-label="chart: ← → pick a step" data-hx="');
-  insetEl.classList.toggle('show', !!html); if (html && html !== insetHTML) { insetHTML = html; morphHTML(insetEl, html); }   // round 6: patch, no rebuild
-  if (glowSel && glowSel.startsWith('#inset')) { const el = document.querySelector(glowSel); if (el) { el.classList.add('gHL'); glowDom = el; } }   // re-rendered: keep the tip's outline
+  if (html) html = PW(html);
+  insetEl.classList.toggle('show', !!html); if (html && html !== insetHTML) { insetHTML = html; morphHTML(insetEl, html); }
+  if (glowSel && glowSel.startsWith('#inset')) { const el = document.querySelector(glowSel); if (el) { el.classList.add('gHL'); glowDom = el; } }
 }
 const refresh = () => { if (D) update(); else drawInset(); applyHL(); };
-// hover: an inset chart's [data-hx] overlay maps the pointer to a lag (input) or a forecast step k (trajectory, forecast)
+const PW = s => window.K8Phone ? window.K8Phone.words(s) : s;
 const clamp01 = v => Math.max(0, Math.min(1, v));
 const hxMove = e => {
   const t = e.target.closest && e.target.closest('[data-hx]'); let v = null;
   if (t) { const r = t.getBoundingClientRect(), n = +t.dataset.n, i = Math.round(clamp01((e.clientX - r.left) / r.width) * (n - 1)); v = t.dataset.rev === '1' ? n - 1 - i : i + (+t.dataset.off || 0); }
   if (v !== U.hov) { U.hov = v; drawInset(); applyHL(); poseHS0(); }
 };
-insetEl.addEventListener('pointermove', hxMove);
-// viz-phone: a finger has no hover. A tap or a slide on a chart picks the step and the pick stays after the finger lifts; a tap anywhere else in the figure clears it.
-insetEl.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') hxMove(e); });
+let TT = null;
+insetEl.addEventListener('pointermove', e => {
+  if (e.pointerType === 'mouse') return hxMove(e);
+  if (!TT || e.pointerId !== TT.id) return;
+  if (!TT.slide) { const dx = e.clientX - TT.x, dy = e.clientY - TT.y; if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy)) return; TT.slide = true; }
+  hxMove(e);
+});
 insetEl.addEventListener('pointerleave', e => { if (e.pointerType !== 'mouse') return; if (U.hov !== null) { U.hov = null; drawInset(); applyHL(); poseHS0(); } });
-// clicks: [data-grid] heatmaps map the pointer to (row, col); [data-act] rows, tabs and toggles.
-// pointerdown, not click: while playing, the inset is redrawn ~8×/s, so a click's down and up can land on different (replaced) elements
 insetEl.addEventListener('pointerdown', e => {
   if (e.button !== 0) return;
+  if (e.pointerType === 'mouse') return insetAct(e.target, e.clientX, e.clientY);
   const g = e.target.closest && e.target.closest('[data-grid]');
-  if (g) { const r = g.getBoundingClientRect(), rows = +g.dataset.rows, cols = +g.dataset.cols;
-    return gridPick(g.dataset.grid, Math.min(rows - 1, Math.floor(clamp01((e.clientY - r.top) / r.height) * rows)), Math.min(cols - 1, Math.floor(clamp01((e.clientX - r.left) / r.width) * cols))); }
-  const a = e.target.closest && e.target.closest('[data-act]'); if (!a) return;
+  TT = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.target, r: g && g.getBoundingClientRect(), slide: false };
+});
+addEventListener('pointerup', e => {
+  const t = TT; if (!t || e.pointerId !== t.id) return; TT = null;
+  if (t.slide || Math.hypot(e.clientX - t.x, e.clientY - t.y) >= 8) return;
+  hxMove({ target: t.t, clientX: t.x }); insetAct(t.t, t.x, t.y, t.r);
+});
+insetEl.addEventListener('pointercancel', e => { if (TT && e.pointerId === TT.id) TT = null; });
+function insetAct(target, x, y, rect) {
+  const g = target.closest && target.closest('[data-grid]');
+  if (g) { const r = rect || g.getBoundingClientRect(), rows = +g.dataset.rows, cols = +g.dataset.cols;
+    return gridPick(g.dataset.grid, Math.min(rows - 1, Math.floor(clamp01((y - r.top) / r.height) * rows)), Math.min(cols - 1, Math.floor(clamp01((x - r.left) / r.width) * cols))); }
+  const a = target.closest && target.closest('[data-act]'); if (!a) return;
   const [k, v] = a.dataset.act.split(':');
   if (k === 'frow') U.fpick = U.fpick === +v ? null : +v;
   else if (k === 'fexp') U.fexp = !U.fexp;
   else if (k === 'pstream' && U.ppick) U.ppick = { ...U.ppick, s: +v };
   else if (k === 'btab') { U.btab = v; const m = build >= 0 && /^blk(\d)$/.exec(STEPS[build]);
-    if (v === 'ch' && m && !(PICK && PICK.b === +m[1])) return setPick(mostActive(+m[1])); }   // round 10b: never open on an empty / dead channel
+    if (v === 'ch' && m && !(PICK && PICK.b === +m[1])) return setPick(mostActive(+m[1])); }
   else if (k === 'htab') U.htab = v;
   refresh();
-});
-// round 10b: the channel to show when nobody picked one: the largest |depthwise output| this call (never a ReLU-dead, all-zero channel)
+}
 function mostActive(b) { const h = depthwise(b, idx); let best = { s: 0, c: 0, v: -1 };
   for (let s = 0; s < (ONE ? 1 : 2); s++) for (let c = 0; c < 32; c++) if (Math.abs(h[s][c]) > best.v) best = { s, c, v: Math.abs(h[s][c]) };
   return { b, s: best.s, c: best.c, t0: performance.now() }; }
@@ -600,7 +536,6 @@ function gridPick(name, row, col) {
   refresh();
 }
 
-// ---- glow highlights in 3D: a pulsing additive box with a white outline around what is picked or hovered (design coords)
 const HLG = new THREE.Group(); MODEL.add(HLG); const HLM = [];
 function hlClear() { for (const o of HLG.children.slice()) { HLG.remove(o); if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); } HLM.length = 0; }
 function hlBox(x0, x1, y0, y1, z0, z1, color = '#ffd166') {
@@ -620,7 +555,7 @@ function applyHL() {
     hlLabel(`h⁰: ${nm}`, V(.8, LY.feat, zc(0, r))); if (!ONE) hlLabel(`h¹: ${SIGNS[r] < 0 ? `−${nm} (mirror flips it)` : `${nm} (same)`}`, V(.8, LY.feat, zc(1, r))); }
   if (key === 'proj' && U.ppick) { const { s, o } = U.ppick;
     hlBox(-NP * TS - TS * .5, TS * .6, LY.proj - .08, LY.proj + .08, ...zSpan(s, o, o));
-    hlBox(-TS * .9, TS * .9, LY.feat - .09, LY.feat + .09, ...zSpan(s, 0, 6), '#8fe3ff');                 // the 7 features it reads, this call
+    hlBox(-TS * .9, TS * .9, LY.feat - .09, LY.feat + .09, ...zSpan(s, 0, 6), '#8fe3ff');
     hlLabel(`channel ${o + 1} · h${s ? '¹' : '⁰'}`, V(.8, LY.proj, zc(s, o))); }
   const bm = /^blk(\d)$/.exec(key);
   if (bm && PICK && PICK.b === +bm[1] && !(ONE && PICK.s)) { const b = +bm[1], d = DIL[b], yi = yIn(b), [z0, z1] = zSpan(PICK.s, PICK.c, PICK.c);
@@ -634,16 +569,13 @@ function applyHL() {
   if (key === 'traj' && hv >= 1 && hv <= H) { const x = hv * TS; hlBox(x - TS * .62, x + TS * .62, LY.prior - .08, LY.r + .08, -.17, .17); hlLabel(`step ${hv} · ${hv * 10} ms`, V(x, LY.r + .32, .2)); }
   if (key === 'out' && hv >= 1 && hv <= H) { const x = hv * TS; hlBox(x - TS * .62, x + TS * .62, FY - .1, FY + .52, -.22, .22); hlLabel(`step ${hv} · ${hv * 10} ms`, V(x, FY + .75, .2)); }
 }
-// which way the player's body faces in this trace: the average heading of all its frames (same quaternion mapping as the headset), cached per trace
 function bodyRef() { if (!D || !window.K8HeadPose) return 0; if (D._ref === undefined) D._ref = window.K8HeadPose.meanHeading(D.frames.map(fr => 2 * Math.atan2(-fr.q[2], fr.q[0]))); return D._ref; }
-// the step-1 headset follows the hovered time column (the inset's chart), otherwise the live pose
 function poseHS0() {
   if (!D) return; const lag = build >= 0 && STEPS[build] === 'input' && U.hov > 0 && D.frames[idx - U.hov] ? U.hov : 0, g = D.frames[idx - lag];
   hs0.quaternion.set(-g.q[1], -g.q[2], g.q[3], g.q[0]).normalize(); if (HEAD0) HEAD0.pose(hs0.quaternion, bodyRef());
   if (HSL) HSL.element.textContent = lag ? `the headset ${lag * 10} ms ago` : 'the headset at “now”';
 }
 
-// ---- focus mode: every group that is not the current step is drawn at 20% (material colour × .2); what the step reads stays bright
 const FOCUS_DIM = .2, FOCUS_GROUPS = { mirror: ['feat', 'proj', 'links'], reach: ['tree'] };
 const focusKeep = key => ({ feat: [SL.input], proj: [SL.feat], blk0: [SL.proj], blk1: [BL[0].out], blk2: [BL[1].out], head: [BL[2].out], traj: [SL.coef, SL.feat], out: [SL.r, SL.input] }[key] || []);
 function applyFocus() {
@@ -652,34 +584,27 @@ function applyFocus() {
   const cur = new Set((FOCUS_GROUPS[key] || [key]).map(k => GROUPS[k])), keep = new Set(on ? focusKeep(key) : []);
   for (const [k, g] of Object.entries(GROUPS)) { if (k === 'gaze') continue; const dim = on && !cur.has(g);
     g.traverse(o => { const m = o.material; if (!m || !m.color) return; if (!m.userData.base) m.userData.base = m.color.clone();
-      m.color.copy(m.userData.base).multiplyScalar(dim && !keep.has(o) ? (key === 'reach' ? (o.isLineSegments ? 0 : .1) : FOCUS_DIM) : 1); }); }   // reach: the tree alone; the layers stay at 10% as its rungs, the blocks' own lines and outlines go
-  // viz-look P1: in the whole model all 14 line sets are on screen at once and add up to white where they cross, so each is drawn at 45% there
+      m.color.copy(m.userData.base).multiplyScalar(dim && !keep.has(o) ? (key === 'reach' ? (o.isLineSegments ? 0 : .1) : FOCUS_DIM) : 1); }); }
   for (const l of lines) if (!l.userData.static) l.material.opacity = l.userData.op * (key ? 1 : .45);
-  // viz-look P1: in a step view the other stages keep only their name pill (faded with the depth fade, see labelFog); their small labels go
-  for (const L of allLabels) { const p = L.o.parent, own = cur.has(L.grp) || (p && cur.has(p.parent));   // a block's context strips are a child group of the block
+  for (const L of allLabels) { const p = L.o.parent, own = cur.has(L.grp) || (p && cur.has(p.parent));
     L.other = on && L.grp !== CL && L.grp !== GROUPS.links && !own; }
   labelFog();
 }
-// ---- one stream only: hide the h¹ sheet (zero-scale its instances), its lines and its flip outlines; the maths is unchanged
 function setStreamOnly(on) {
   ONE = on; const z = new THREE.Matrix4().makeScale(0, 0, 0);
   for (const mesh of [SL.feat, SL.proj, ...BL.flatMap(B => [B.out, B.dw, B.upd])]) {
-    const half = mesh.count / 2, arr = mesh.instanceMatrix.array;                // instance = (sheet·rows + row)·cols + col: h¹ is the second half
+    const half = mesh.count / 2, arr = mesh.instanceMatrix.array;
     if (!mesh.userData.orig) mesh.userData.orig = arr.slice();
     if (on) for (let k = half; k < mesh.count; k++) mesh.setMatrixAt(k, z); else arr.set(mesh.userData.orig);
     mesh.instanceMatrix.needsUpdate = true; mesh.computeBoundingSphere();
   }
   FLIPB.forEach(e => { e.visible = !on; });
-  applyClip();                                     // round 5: and everything else of h¹ (boxes, taps, tubes, lines, frames, labels) below the mirror plane
+  applyClip();
   refresh();
 }
-// ---- round 5: clipping planes, set per material from the current state.
-// One-stream mode clips the stream-split groups at the mirror plane, so nothing of h¹ (world y < 0) is drawn there: memory / tap boxes,
-// tap bars, guide lines, skip tubes, node rows, frames. Labels on that side are hidden in the loop. The values are not touched.
-// A guide block shot (CLIP_LIVE) clips its walls to their live part: z ≥ −(memory span + 4 steps), i.e. the memory and "now".
 const SPLIT = ['feat', 'proj', 'blk0', 'blk1', 'blk2'];
 const PLANE_H1 = new THREE.Plane(V(0, 1, 0), .012), PLANE_LIVE = new THREE.Plane(V(0, 0, 1), 0);
-let CLIP_LIVE = null;                              // { z, groups: Set of group keys }
+let CLIP_LIVE = null;
 function applyClip() {
   for (const [k, g] of Object.entries(GROUPS)) {
     const pl = []; if (ONE && SPLIT.includes(k)) pl.push(PLANE_H1); if (CLIP_LIVE && CLIP_LIVE.groups.has(k)) pl.push(PLANE_LIVE);
@@ -688,7 +613,7 @@ function applyClip() {
   }
   requestRender();
 }
-const labelClipped = L => {                        // a label on the clipped-away side (one-stream h¹, or before the live part of a guide shot)
+const labelClipped = L => {
   if (!ONE && !CLIP_LIVE) return false;
   const k = L.gk !== undefined ? L.gk : (L.gk = Object.keys(GROUPS).find(n => GROUPS[n] === L.grp) || ''), w = L.w || (L.w = L.o.getWorldPosition(V(0, 0, 0)));
   return (ONE && SPLIT.includes(k) && w.y < -.012) || (!!CLIP_LIVE && CLIP_LIVE.groups.has(k) && w.z < -CLIP_LIVE.z);
@@ -697,8 +622,7 @@ document.getElementById('tFocus').onchange = () => applyFocus();
 document.getElementById('tOne').onchange = e => { if (e.target.checked && swapped) setSwap(false); setStreamOnly(e.target.checked); };
 document.getElementById('lineB').oninput = e => { LB = +e.target.value; refresh(); };
 
-// ================================================================ proposal: one call through a block (5.1), the mirror swap (3.1), the growing tree (6.1)
-const CALL_PH = [350, 1100, 1700, 2400, 3200];     // ends of: 0 new input, 1 eight taps, 2 mix, 3 skip ⊕ ReLU, 4 oldest leaves
+const CALL_PH = [350, 1100, 1700, 2400, 3200];
 const PH_TXT = ['① new sample in', '② sum over 8 taps', '③ mix channels', '④ add the skip', '⑤ oldest leaves memory'];
 function blkCaption() {
   const m = build >= 0 && /^blk(\d)$/.exec(STEPS[build]); captionEl.classList.toggle('show', !!m); if (!m) return;
@@ -709,22 +633,22 @@ function setLineOps(B, dw, mix, up) { B.dwLines.material.opacity = dw; B.selfLin
 function endCall() { if (!CALL) return; const B = BL[CALL.b]; setLineOps(B, B.dwLines.userData.op, B.selfLines.userData.op, B.upLines.userData.op); B.flash.visible = B.leave.visible = false; CALL = null; clearPulses(); blkCaption(); }
 function oneCall() {
   const m = build >= 0 && /^blk(\d)$/.exec(STEPS[build]); if (!m || !D || idx >= D.frames.length - 1) return;
-  endCall(); if (!EMB()) setPlay(false); if (!playing) setIdx(idx + 1);   // the next real call: walls, nodes and lines now show its values (ticket 06b: embedded, the story owns play / pause, so a playing trace keeps playing under the animation)
+  endCall(); if (!EMB()) setPlay(false); if (!playing) setIdx(idx + 1);
   const b = +m[1], B = BL[b], g = GROUPS['blk' + b], t0 = performance.now(), z16 = s => zc(s, 16);
   CALL = { b, t0, ph: reduce ? 4 : 0 };
   B.guide.forEach(([a, e]) => pulse([a, e], t0 + CALL_PH[0], CALL_PH[1] - CALL_PH[0], B.tapc, g));
   for (let s = 0; s < 2; s++) {
-    pulse([V(CX, LY.dw(b), z16(s)), V(CX, LY.upd(b), z16(s))], t0 + CALL_PH[1], CALL_PH[2] - CALL_PH[1], '#ffb454', g);        // A: stream to itself
-    pulse([V(CX, LY.dw(b), z16(s)), V(CX, LY.upd(b), z16(1 - s))], t0 + CALL_PH[1], CALL_PH[2] - CALL_PH[1], '#6fa8ff', g);    // B: to its twin, through the mirror
-    pulse(B.skipPts[s], t0 + CALL_PH[2], CALL_PH[3] - CALL_PH[2], '#e6ebf2', g);                                              // skip: the block's input
-    pulse([V(CX, LY.upd(b), z16(s)), V(0, LY.out(b) - .06, z16(s))], t0 + CALL_PH[2], CALL_PH[3] - CALL_PH[2], '#ffb454', g);   // ReLU(mix) to the add
+    pulse([V(CX, LY.dw(b), z16(s)), V(CX, LY.upd(b), z16(s))], t0 + CALL_PH[1], CALL_PH[2] - CALL_PH[1], '#ffb454', g);
+    pulse([V(CX, LY.dw(b), z16(s)), V(CX, LY.upd(b), z16(1 - s))], t0 + CALL_PH[1], CALL_PH[2] - CALL_PH[1], '#6fa8ff', g);
+    pulse(B.skipPts[s], t0 + CALL_PH[2], CALL_PH[3] - CALL_PH[2], '#e6ebf2', g);
+    pulse([V(CX, LY.upd(b), z16(s)), V(0, LY.out(b) - .06, z16(s))], t0 + CALL_PH[2], CALL_PH[3] - CALL_PH[2], '#ffb454', g);
   }
   if (reduce) { B.leave.visible = true; B.leave.material.opacity = .45; }
   blkCaption();
 }
 function stepCall(now) {
   if (!CALL) return; const B = BL[CALL.b], el = now - CALL.t0;
-  if (el > CALL_PH[4] + (reduce ? 2500 : 900)) { endCall(); if (EMB()) embCallAgain(now); return; }   // ticket 06b: embedded, the call repeats while its step is shown
+  if (el > CALL_PH[4] + (reduce ? 2500 : 900)) { endCall(); if (EMB()) embCallAgain(now); return; }
   if (reduce) return;
   const ph = Math.min(4, CALL_PH.findIndex(e => el < e) < 0 ? 4 : CALL_PH.findIndex(e => el < e));
   if (ph !== CALL.ph) { CALL.ph = ph; blkCaption(); }
@@ -732,7 +656,6 @@ function stepCall(now) {
   B.leave.visible = ph === 4; B.leave.material.opacity = .8 * (1 - (el - CALL_PH[3]) / (CALL_PH[4] - CALL_PH[3]));
   setLineOps(B, ph === 1 ? 1 : .12, ph === 2 ? 1 : .12, ph === 3 ? .9 : .1);
 }
-// 3.1: mirror the motion and the two streams trade places (shown from the features up; z → −z inside those groups)
 let SWAP = null, swapped = false;
 const applySwap = z => ['feat', 'proj'].forEach(k => { GROUPS[k].scale.z = z; });
 function setSwap(on) {
@@ -740,75 +663,64 @@ function setSwap(on) {
   if (reduce) applySwap(to); else SWAP = { from, to, t0: performance.now() };
   const bt = document.getElementById('swapBtn'); if (bt) bt.textContent = on ? 'Back to the original ⇄' : 'Mirror the motion ⇄';
   const ex = document.getElementById('swapTxt'); if (ex) ex.style.display = on ? 'block' : 'none';
-  drawInset();                                     // the inset's h⁰ / h¹ table follows the swap
+  drawInset();
 }
 function stepSwap(now) { if (!SWAP) return; const u = Math.min(1, (now - SWAP.t0) / 1000), e = u < .5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2; applySwap(SWAP.from + (SWAP.to - SWAP.from) * e); if (u === 1) SWAP = null; }
-// 6.1: grow the receptive-field tree level by level (block 3 → block 2 → block 1 → projection)
 let GROW = null;
 const cTree = new THREE.Color('#9b8cff');
-function paintTree(u) {        // u = levels grown (0..3); null = the normal faint tree
+function paintTree(u) {
   const lv = L => u === null ? .35 : Math.max(0, Math.min(1, u - L)) * .95; let n = 0;
   for (let j = 0; j < 8; j++) { treeLines.paint(n++, cTree, lv(0)); for (let i = 0; i < 8; i++) { treeLines.paint(n++, cTree, lv(1)); for (let k = 0; k < 8; k++) treeLines.paint(n++, cTree, lv(2)); } }
   treeLines.done();
 }
 function stepGrow(now) { if (!GROW) return; const u = (now - GROW.t0) / 700; paintTree(Math.min(3, u)); if (u >= 3) GROW = null; }
-// 8 / 11.1: over-the-shoulder camera in the gaze step, until the user orbits
 let gazeFollow = false;
 function stepGaze(dt) {
   if (!gazeFollow || camTween || !D || build < 0 || STEPS[build] !== 'gaze') return;
   const f = D.frames[idx], nd = toScene(fwd(f.q)).normalize(), gp = G.position;
-  // viz-look P1: closer and from the side of the shoulder, so the dots on the sphere sit mid-frame and the headset stays in a corner (was 2.4 straight behind)
-  const sd = V(nd.z, 0, -nd.x).normalize();        // level, at right angles to the forward direction
-  const gk = window.K8Phone ? Math.min(2.2, window.K8Phone.distK()) : 1;   // viz-phone: on a small screen the camera stands further behind the shoulder, so the headset does not fill the scene (1 on the desktop)
+  const sd = V(nd.z, 0, -nd.x).normalize();
+  const gk = window.K8Phone ? Math.min(2.2, window.K8Phone.distK()) : 1;
   const tgt = gp.clone().addScaledVector(nd, 1.5), pos = gp.clone().addScaledVector(nd, -1.6 * gk).addScaledVector(sd, .25 * gk).add(V(0, .7 * gk, 0)), k = reduce ? 1 : 1 - Math.exp(-dt * 4);
   const d0 = camera.position.distanceToSquared(pos) + controls.target.distanceToSquared(tgt);
-  camera.position.lerp(pos, k); controls.target.lerp(tgt, k); if (d0 > 1e-8) requestRender();   // render while it is still easing in
+  camera.position.lerp(pos, k); controls.target.lerp(tgt, k); if (d0 > 1e-8) requestRender();
 }
 function setPick(p) {
   PICK = p; BL.forEach((B, b) => { const on = p && p.b === b; B.pickBoxes.forEach(e => { e.visible = !!on; if (on) e.position.z = zc(p.s, p.c); }); B.pickNode.visible = !!on; if (on) B.pickNode.position.z = zc(p.s, p.c); });
   if (D) update(); else drawInset(); applyHL();
 }
-// ================================================================ round 3: beginner tour (tour.js). Each tip points at a point on a real object:
-// obj.localToWorld(local) every frame, so it follows the group matrices (MODEL, the mirror swap). 'vis' = the object whose visibility counts.
 const TA = (obj, x, y, z, vis = obj) => ({ obj, vis, local: V(x, y, z) });
-// round 11: "how context builds". Under each block, a strip on the time axis marks every lag its output depends on (with the blocks below):
-// Block 1 = 8, Block 2 = 64, Block 3 = 393 (lags a + 8b + 47c; 119 of them are reached twice, amber). Exact counts, same enumeration as the reach inset.
 const CTX_N = [8, 64, 393], CTX_M = [1, 8, 64];
-// round 13: under block k, the strips of blocks 1..k are stacked (8 → 64 → 393), thick and on one 3.93 s time bar, with ticks at now / −0.08 / −0.64 / −3.93 s
 const ctxRowZ = (B, j) => -(B.zMax + .6 + j * .42);
 const ctxLags = k => { const hits = new Map(); for (let a = 0; a < 8; a++) for (let q = 0; q < (k >= 1 ? 8 : 1); q++) for (let r = 0; r < (k >= 2 ? 8 : 1); r++) { const lag = a + 8 * q + 47 * r; hits.set(lag, (hits.get(lag) || 0) + 1); } return hits; };
 for (let b = 0; b < 3; b++) { const B = BL[b];
   const ctx = new THREE.Group(); ctx.visible = false; GROUPS['blk' + b].add(ctx); let own = null;
   for (let j = 0; j <= b; j++) { const zS = ctxRowZ(B, j), hits = ctxLags(j), lags = [...hits.keys()].sort((x, y) => x - y); console.assert(lags.length === CTX_N[j], 'context lag count');
-    const bg = new THREE.Mesh(new THREE.BoxGeometry(393 * TS, .03, .2), new THREE.MeshBasicMaterial({ color: '#3a3a3a', transparent: true, opacity: .9 }));   /* viz-look P1: the 3.93 s bar a little lighter, so the row's length reads against it */ bg.position.set(-392 * TS / 2, B.yi, zS); bg.userData.noClip = true; ctx.add(bg);
+    const bg = new THREE.Mesh(new THREE.BoxGeometry(393 * TS, .03, .2), new THREE.MeshBasicMaterial({ color: '#3a3a3a', transparent: true, opacity: .9 }));    bg.position.set(-392 * TS / 2, B.yi, zS); bg.userData.noClip = true; ctx.add(bg);
     const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(TS * .9, .06, .26), new THREE.MeshBasicMaterial(), lags.length), m4 = new THREE.Matrix4(), cOne = new THREE.Color(j === b ? '#9b8cff' : '#6f63b8'), cTwo = new THREE.Color('#ffd166');
     lags.forEach((lag, i) => { m4.makeTranslation(-lag * TS, B.yi, zS); inst.setMatrixAt(i, m4); inst.setColorAt(i, hits.get(lag) > 1 ? cTwo : cOne); });
     inst.userData.noClip = true; inst.userData.noFrame = true; ctx.add(inst); if (j === b) own = inst;
     label(`Block ${j + 1}: ${CTX_N[j]} samples (${(CTX_N[j] / 100).toFixed(2)} s)`, V(.45, B.yi, zS), 'lbl layer', null, ctx); }
   const zB = ctxRowZ(B, b) - .32;
-  // viz-look P1: one label per fact. Each row's name already gives its length in seconds, so the axis keeps just two ticks: 'now', and the far end
-  // of this block's own row (Block 1's far end is 8 samples from 'now', too close to label twice). Was four ticks under every block.
-  for (const [n, t] of [[0, 'now'], ...(b ? [[CTX_N[b], `−${(CTX_N[b] / 100).toFixed(2)} s`]] : [])]) label(t, n ? V(-n * TS - .3, B.yi, ctxRowZ(B, b)) : V(0, B.yi, -(B.zMax + .28)), 'lbl layer', null, ctx);   // 'now' above the stack at its right end; the far end beside its own row (no label under the rows)
+  for (const [n, t] of [[0, 'now'], ...(b ? [[CTX_N[b], `−${(CTX_N[b] / 100).toFixed(2)} s`]] : [])]) label(t, n ? V(-n * TS - .3, B.yi, ctxRowZ(B, b)) : V(0, B.yi, -(B.zMax + .28)), 'lbl layer', null, ctx);
   label(b === 0 ? 'reads the projection' : `reads Block ${b}: ${CTX_M[b]} samples each${b === 2 ? ' · amber = reached twice' : ''}`, V(-196 * TS, B.yi, zB - .6), 'lbl layer v', null, ctx);
   Object.assign(B, { ctx, ctxInst: own }); }
-// the anchor is the row's "now" end, so the bubble sits right of the stack (every strip extends left from now) instead of over it
 const ctxA = b => TA(BL[b].ctxInst, 0, BL[b].yi, ctxRowZ(BL[b], b), BL[b].ctx);
-const memA = b => TA(BL[b].mem, 0, 0, BL[b].zMax);                                          // top edge of the violet memory box, mid-span
-const tapA = b => TA(BL[b].tapM[0], 0, 0, BL[b].zMax);                                      // the oldest tap marker (offset label −7d sits there)
-const mixA = b => GMIX && GMIX.b === b ? TA(BL[b].selfLines, CX, LY.upd(b), zc(0, GMIX.o))   // round 7: the guide's picked output node, the one that glows
-  : TA(BL[b].selfLines, CX, (LY.dw(b) + LY.upd(b)) / 2, zc(0, 24));           // between the 8-tap node and the update node, h⁰ side
-const skipA = b => { const p = BL[b].skipPts[0][12]; return TA(BL[b].skipT[0], p.x, p.y, p.z); };   // the middle of the h⁰ skip tube
+const memA = b => TA(BL[b].mem, 0, 0, BL[b].zMax);
+const tapA = b => TA(BL[b].tapM[0], 0, 0, BL[b].zMax);
+const mixA = b => GMIX && GMIX.b === b ? TA(BL[b].selfLines, CX, LY.upd(b), zc(0, GMIX.o))
+  : TA(BL[b].selfLines, CX, (LY.dw(b) + LY.upd(b)) / 2, zc(0, 24));
+const skipA = b => { const p = BL[b].skipPts[0][12]; return TA(BL[b].skipT[0], p.x, p.y, p.z); };
 const TOUR_ANCHORS = {
-  'blk0.ctx': () => ctxA(0), 'blk1.ctx': () => ctxA(1), 'blk2.ctx': () => ctxA(2),   // round 11
+  'blk0.ctx': () => ctxA(0), 'blk1.ctx': () => ctxA(1), 'blk2.ctx': () => ctxA(2),
   'input.now': () => TA(SL.input, 0, LY.in, zr(1, 4)),
   'input.rows': () => TA(SL.input, -2.5, LY.in, 0),
   'input.headset': () => TA(hs0, 0, .2, 0, HS0),
   'feat.rows': () => TA(SL.feat, -1.2, LY.feat, zc(0, 3)),
   'feat.fork': () => { const p = new THREE.CatmullRomCurve3(forkPts).getPoint(.35); return TA(forkT, p.x, p.y, p.z); },
-  'feat.flip': () => TA(FLIPB[0], -.8 - FLIPB[0].position.x, 0, 0),                          // ωy outline on h¹, near the "now" end
+  'feat.flip': () => TA(FLIPB[0], -.8 - FLIPB[0].position.x, 0, 0),
   'proj.fan': () => TA(projLines, 0, (LY.feat + LY.proj) / 2, zc(0, 8)),
   'proj.cells': () => TA(SL.proj, 0, LY.proj, zc(0, 16)),
-  'mirror.top': () => TA(MODEL, -1.2, LY.proj, zc(0, 20), SL.proj),                         // fixed places (MODEL), not the swapping groups
+  'mirror.top': () => TA(MODEL, -1.2, LY.proj, zc(0, 20), SL.proj),
   'mirror.bottom': () => ONE ? null : TA(MODEL, -1.2, LY.proj, zc(1, 20), SL.proj),
   'blk0.mem': () => memA(0), 'blk0.taps': () => tapA(0), 'blk0.mix': () => ONE ? null : mixA(0), 'blk0.skip': () => skipA(0),
   'blk1.mem': () => memA(1), 'blk1.taps': () => tapA(1), 'blk1.mix': () => ONE ? null : mixA(1), 'blk1.skip': () => skipA(1),
@@ -824,15 +736,12 @@ const TOUR_ANCHORS = {
   'out.scored': () => TA(scoredBox, 0, 0, 0),
   'gaze.headset': () => TA(headM, 0, .2, 0),
   'gaze.dots': () => TA(predDots[H - 1], 0, 0, 0),
-  'wear.dots': () => TA(predDots[H - 1], 0, 0, 0),   // round 15: the same step-20 dot, for the wear tips
+  'wear.dots': () => TA(predDots[H - 1], 0, 0, 0),
 };
-// ---- round 5: anchor glow. While a guide shot or a tip points at a part, that part gets the amber pulsing glow (white outline, additive amber;
-// static under reduced motion) and the other solid parts of its group are dimmed a little, so it is obvious what the bubble means.
-// objs: glow around each object's own bounds (as a child, so it follows the mirror swap and the moving gaze dots); boxes: design coords (MODEL).
 const GLOW = {
-  'input.now': () => ({ boxes: [[-TS * 1.6, TS * .6, LY.in - .1, LY.in + .1, zr(0, 4) - .07, zr(3, 4) + .07]], host: [SL.input] }),   // the two newest poses
+  'input.now': () => ({ boxes: [[-TS * 1.6, TS * .6, LY.in - .1, LY.in + .1, zr(0, 4) - .07, zr(3, 4) + .07]], host: [SL.input] }),
   'input.rows': () => ({ objs: [SL.input] }),
-  'input.headset': () => ({ objs: [HEAD0 ? hsBody0 : hs0] }),   // 06c: hs0 is empty with the new head; the visible head is in hsBody0
+  'input.headset': () => ({ objs: [HEAD0 ? hsBody0 : hs0] }),
   'feat.rows': () => ({ boxes: [[-NP * TS - TS / 2, TS * .6, LY.feat - .08, LY.feat + .08, ...zSpan(0, 0, 6)]], host: [SL.feat] }),
   'feat.fork': () => ({ objs: [forkT] }),
   'feat.flip': () => ({ objs: FLIPB.slice() }),
@@ -840,52 +749,48 @@ const GLOW = {
   'proj.cells': () => ({ boxes: [[-TS * .7, TS * .7, LY.proj - .08, LY.proj + .08, ...zSpan(0, 0, 31)]], host: [SL.proj] }),
   'mirror.top': () => ({ boxes: [[-NP * TS - TS / 2, TS * .6, LY.proj - .09, LY.proj + .09, ...zSpan(0, 0, 31)]], host: [SL.proj, SL.feat] }),
   'mirror.bottom': () => ONE ? null : ({ boxes: [[-NP * TS - TS / 2, TS * .6, LY.proj - .09, LY.proj + .09, ...zSpan(1, 0, 31)]], host: [SL.proj, SL.feat] }),
-  'reach.tree': () => ({ boxes: [[-TS * 2, TS * 2, LY.out(2) - .1, LY.out(2) + .1, -.1, .1]], host: [treeLines] }),   // the root: one output of Block 3, now
+  'reach.tree': () => ({ boxes: [[-TS * 2, TS * 2, LY.out(2) - .1, LY.out(2) + .1, -.1, .1]], host: [treeLines] }),
   'head.grid': () => ({ objs: [SL.coef] }),
   'traj.prior': () => ({ objs: [SL.prior] }), 'traj.corr': () => ({ objs: [SL.corr] }), 'traj.r': () => ({ objs: [SL.r] }),
   'out.pred': () => ({ objs: [SL.pred] }), 'out.truth': () => ({ objs: [SL.truth] }), 'out.err': () => ({ objs: [SL.err] }), 'out.scored': () => ({ objs: [scoredBox] }),
   'gaze.headset': () => ({ objs: [HEAD ? bustM : headM] }), 'gaze.dots': () => ({ objs: [predDots[H - 1], truthDots[H - 1]] }), 'wear.dots': () => ({ objs: [predDots[H - 1], truthDots[H - 1]] }),
 };
 [0, 1, 2].forEach(b => Object.assign(GLOW, {
-  // memory and taps: the top segment only (where the labels and the anchor sit); a full-height glow on 8 tall bars washes the view out
   [`blk${b}.mem`]: () => { const B = BL[b], sp = 7 * B.d * TS; return { boxes: [[-sp - TS / 2, -TS / 2, B.yi - .1, B.yi + .1, B.zMax - .35, B.zMax + .02]], host: [B.mem] }; },
-  [`blk${b}.taps`]: () => { const B = BL[b]; return { boxes: B.tapM.map((_, j) => { const x = -(7 - j) * B.d * TS; return [x - TS * .3, x + TS * .3, B.yi + .09, B.yi + .15, B.zMax - .35, B.zMax + .06]; }), host: B.tapM.slice(), pad: .002 }; },   // thin: Block 1's taps are 1 step apart
-  [`blk${b}.mix`]: () => { const zM = BL[b].zMax, o = GMIX && GMIX.b === b ? GMIX.o : null;   // the lit output node, or the whole compute lane
+  [`blk${b}.taps`]: () => { const B = BL[b]; return { boxes: B.tapM.map((_, j) => { const x = -(7 - j) * B.d * TS; return [x - TS * .3, x + TS * .3, B.yi + .09, B.yi + .15, B.zMax - .35, B.zMax + .06]; }), host: B.tapM.slice(), pad: .002 }; },
+  [`blk${b}.mix`]: () => { const zM = BL[b].zMax, o = GMIX && GMIX.b === b ? GMIX.o : null;
     return { boxes: [o !== null ? [CX - TS * 1.4, CX + TS * 1.4, LY.upd(b) - .07, LY.upd(b) + .07, ...zSpan(0, o, o)] : [CX - TS * 1.5, CX + TS * 1.5, LY.dw(b) - .06, LY.upd(b) + .06, -zM, zM]], host: [BL[b].dw, BL[b].upd] }; },
   [`blk${b}.skip`]: () => ({ objs: [BL[b].skipT[0]] }),
-  [`blk${b}.ctx`]: () => ({ objs: [BL[b].ctxInst], pad: .03 }),   // a thin padding: the rows above stay clear
+  [`blk${b}.ctx`]: () => ({ objs: [BL[b].ctxInst], pad: .03 }),
 }));
 const GLD = new THREE.Group(); MODEL.add(GLD); const GLM = []; let glowParts = [], glowDim = false;
-function glowMesh(box, pad0) {                     // fill + white edge for a Box3 in the parent's local frame (pad0: a fixed padding)
+function glowMesh(box, pad0) {
   const sz = box.getSize(V(0, 0, 0)), pad = pad0 != null ? pad0 : Math.max(.012, .04 * Math.max(sz.x, sz.y, sz.z)); box.expandByScalar(pad); box.getSize(sz);
   const g = new THREE.BoxGeometry(Math.max(sz.x, .01), Math.max(sz.y, .01), Math.max(sz.z, .01)), c = box.getCenter(V(0, 0, 0));
   const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#ffd166', transparent: true, opacity: .3, blending: THREE.AdditiveBlending, depthWrite: false }));
   const edge = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: '#ffffff' }));
   for (const o of [fill, edge]) { o.position.copy(c); o.userData.glow = o.userData.noFrame = true; o.raycast = () => {}; }
-  const big = Math.max(sz.x, sz.y, sz.z); fill.userData.k = big > 1.5 ? .2 : big > .5 ? .5 : 1; GLM.push(fill); return [fill, edge];   // big boxes: a faint fill, the outline carries them
+  const big = Math.max(sz.x, sz.y, sz.z); fill.userData.k = big > 1.5 ? .2 : big > .5 ? .5 : 1; GLM.push(fill); return [fill, edge];
 }
 function glowClear() {
-  glowSel = null; if (!glowParts.length && !glowDim && !glowDom) return;   // cheap when nothing glows (the tour calls this on every hide)
+  glowSel = null; if (!glowParts.length && !glowDim && !glowDom) return;
   for (const o of glowParts) { if (o.parent) o.parent.remove(o); o.geometry.dispose(); o.material.dispose(); } glowParts = []; GLM.length = 0;
   if (glowDim) { glowDim = false; applyFocus(); }
   if (glowDom) { glowDom.classList.remove('gHL'); glowDom = null; }
   requestRender();
 }
-// round 15: in the wear view the dots are a few pixels across and a box glow (additive fill) sat on top of them and washed them out. There
-// the glow is a flat ring around the object, turned to face the camera just before it is drawn, with a clear centre so the dot shows.
 const _rq = new THREE.Quaternion();
 function ringGlow(o) {
   if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); const r = o.geometry.boundingSphere.radius, parts = [];
   for (const [r0, r1, c] of [[r * 1.9, r * 2.3, '#ffd166'], [r * 2.3, r * 2.45, '#ffffff']]) {
     const m = new THREE.Mesh(new THREE.RingGeometry(r0, r1, 40), new THREE.MeshBasicMaterial({ color: c, transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
     m.userData.glow = m.userData.noFrame = true; m.raycast = () => {}; m.renderOrder = 10;
-    // face the camera: local rotation = inverse(parent's world rotation) × camera rotation; the matrices are refreshed before drawing
     m.onBeforeRender = (rr, sc, cam) => { o.getWorldQuaternion(_rq).invert(); m.quaternion.copy(_rq).multiply(cam.quaternion); m.updateMatrixWorld(); };
     o.add(m); parts.push(m);
   }
   return parts;
 }
-function glowTip(t) {                              // t = a tip (or a guide shot's tip), null = clear
+function glowTip(t) {
   glowClear(); if (!t) return;
   if (t.dom) { glowSel = t.dom.replace(/:not\([^)]*\)/g, ''); const el = document.querySelector(glowSel); if (el) { el.classList.add('gHL'); glowDom = el; } return; }
   const spec = GLOW[t.at] && GLOW[t.at](); if (!spec) return;
@@ -896,10 +801,9 @@ function glowTip(t) {                              // t = a tip (or a guide shot
     if (o.isInstancedMesh) { o.computeBoundingBox(); b = o.boundingBox.clone(); }
     else if (o.geometry) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); b = o.geometry.boundingBox.clone(); }
     if (b) { const parts = glowMesh(b, spec.pad); o.add(...parts); glowParts.push(...parts); }
-    else { const wb = new THREE.Box3().setFromObject(o), parts = glowMesh(wb); scene.add(...parts); glowParts.push(...parts); }   // groups (headsets): world box
+    else { const wb = new THREE.Box3().setFromObject(o), parts = glowMesh(wb); scene.add(...parts); glowParts.push(...parts); }
   }
   for (const bx of spec.boxes || []) { const parts = glowMesh(new THREE.Box3(V(bx[0], bx[2], bx[4]), V(bx[1], bx[3], bx[5])), spec.pad); GLD.add(...parts); glowParts.push(...parts); }
-  // dim the other solid parts of the anchor's group (lines stay: they are often the point)
   const tg = new Set([...(spec.objs || []), ...(spec.host || [])]), grp = Object.values(GROUPS).find(g => [...tg].some(o => { for (let p = o; p; p = p.parent) if (p === g) return true; return false; }));
   if (grp) grp.traverse(o => { if (o.userData.glow || tg.has(o) || !(o.isMesh || o.isInstancedMesh) || o.isLineSegments) return; let p = o; for (; p; p = p.parent) if (tg.has(p)) return;
     const m = o.material; if (m && m.color) { if (!m.userData.base) m.userData.base = m.color.clone(); m.color.multiplyScalar(.35); glowDim = true; } });
@@ -908,17 +812,16 @@ function glowTip(t) {                              // t = a tip (or a guide shot
 const shownIn3D = o => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
 const _tp = new THREE.Vector3(), _tc = new THREE.Vector3();
 const TOUR = window.K8TOUR.create({
-  reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, highlight: t => glowTip(t),   // round 5: glow what the bubble points at   // the page's `reduce` is declared further down
-  beginner: () => LEVEL === 'beginner', step: () => WEAR.on ? 'wear' : build >= 0 ? STEPS[build] : null,   // round 15: wearing has its own tips
-  moving: name => WEAR.on || /^(gaze\.|wear\.|input\.headset)/.test(name),   // round 15: anchors that move with playback (in the wear view the camera moves too): the bubble stays put
-  point(name) {                                     // screen position of a 3D anchor, or null if it does not exist
+  reduce: matchMedia('(prefers-reduced-motion: reduce)').matches, highlight: t => glowTip(t),
+  beginner: () => LEVEL === 'beginner', step: () => WEAR.on ? 'wear' : build >= 0 ? STEPS[build] : null,
+  moving: name => WEAR.on || /^(gaze\.|wear\.|input\.headset)/.test(name),
+  point(name) {
     const f = TOUR_ANCHORS[name], a = f && f(); if (!a || !a.obj) return null;
     a.obj.localToWorld(_tp.copy(a.local)); _tc.copy(_tp).applyMatrix4(camera.matrixWorldInverse); _tp.project(camera);
-    const v = viewport();                           // page coordinates: the viewport's corner plus the projected point inside it
+    const v = viewport();
     return { x: v.left + (_tp.x + 1) / 2 * v.width, y: v.top + (1 - _tp.y) / 2 * v.height, behind: _tc.z > 0, vis: shownIn3D(a.vis) };
   },
 });
-// in-page check (console: await __k8.tourCheck()): walks every build step and resolves every tip's anchor there
 async function tourCheck() {
   const was = build, frames = n => new Promise(r => { const k = () => --n ? requestAnimationFrame(k) : r(); requestAnimationFrame(k); }), out = [];
   for (let i = 0; i < STEPS.length; i++) { showBuild(i); TOUR.close(); await frames(3);
@@ -931,7 +834,6 @@ async function tourCheck() {
 }
 function resetProposal() { Object.assign(U, { hov: null, fpick: null, ppick: null, hpick: null, fexp: false }); endCall(); clearPulses(); setPick(null); SWAP = null; swapped = false; applySwap(1); GROW = null; paintTree(null); gazeFollow = false; }
 
-// ================================================================ explanations: plain words first, details on demand
 const P = window.PLAIN || {};
 const TECH = {
   input: [['shape', '[1,400,4], w x y z, 100 Hz'], ['per call', 'only the newest two poses are read; history lives in the block memories']],
@@ -946,19 +848,16 @@ const TECH = {
 };
 [0, 1, 2].forEach(b => { const d = DIL[b]; TECH['blk' + b] = [['memory', `state_in_${b} [1,32,2,${7 * d}]`], ['depthwise', `k=8, dilation ${d}, 256 params shared`], ['pointwise', '[A|B] 2,048 + 32 bias: A to itself, B to the twin'], ['update', 'x ← ReLU(x + ReLU(mix))'], ['own span', `${7 * d + 1} samples`], ['sees (with the layers before it)', `${[8, 64, 393][b]} feature steps${b === 2 ? ' = 394 raw poses (each step uses a pair of poses)' : ''}`]]; });
 const FALLBACK = { overview: { title: 'k8_combined', oneLine: 'Predicts where a head will point 200 ms from now.',
-  simple: 'Left to right: through the network. Up and down: the 32 channels, with the observed stream h⁰ above the mirror plane and the mirrored stream h¹ reflected below. Into the screen: the past; the future comes toward you.', numbers: ['7,555 parameters', '44,196 bytes'] } };   // 44,196: size on disk of the final ONNX, Submission/Motion_Pending_headpose/model_fp32.onnx
+  simple: 'Left to right: through the network. Up and down: the 32 channels, with the observed stream h⁰ above the mirror plane and the mirrored stream h¹ reflected below. Into the screen: the past; the future comes toward you.', numbers: ['7,555 parameters', '44,196 bytes'] } };
 const card = document.getElementById('card');
 function cardOffset(on) { requestRender();
-  // embed: no card and no phone sheet beside the scene, so no view offset: the scene is centred in its panel. Review Q7: while the story
-  // grows the scene on its last step, K8_EMBED.lens = { cx, w, h } puts the picture's centre at x = cx of the w × h canvas (a view
-  // offset), so the canvas can be its final size from the start while the picture moves as if the canvas itself were growing.
   if (EMB()) { const l = EMB().lens; return l ? camera.setViewOffset(l.w, l.h, l.w / 2 - l.cx, 0, l.w, l.h) : camera.clearViewOffset(); }
   const { width: VW, height: VH } = viewport();
-  // viz-phone: on a small screen the panels are not beside the scene but under it (or left of it), so the optical centre moves to the middle of the free rectangle, card open or not
   const po = window.K8Phone && window.K8Phone.offset(); if (po) return camera.setViewOffset(VW, VH, po.x, po.y, VW, VH);
+  if (window.K8Phone && window.K8Phone.form()) return camera.clearViewOffset();
   on = on &&!card.classList.contains('min') && !card.classList.contains('cmp'); if (on) camera.setViewOffset(VW, VH, -200, 0, VW, VH); else camera.clearViewOffset(); }
-let LEVEL = 'standard';   // beginner | standard | expert
-try { const saved = localStorage.getItem('k8level'); if (['beginner', 'standard', 'expert'].includes(saved)) LEVEL = saved; } catch { /* round 9 (compat 2): keep the in-memory default */ }
+let LEVEL = 'standard';
+try { const saved = localStorage.getItem('k8level'); if (['beginner', 'standard', 'expert'].includes(saved)) LEVEL = saved; } catch {  }
 function showCard(key) {
   card.classList.remove('cmp', 'cmpd'); cardOffset(true);
   document.getElementById('gazeKey').classList.toggle('show', key === 'gaze');
@@ -977,15 +876,11 @@ function showCard(key) {
   const techT = t ? `<table>${t.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>` : '';
   const b = (window.BEGINNER || {})[key], e = (window.EXPERT || {})[key];
   const tipsBtn = build >= 0 && key === STEPS[build] && window.K8TOUR.TIPS[key] && !GUIDE.on() ? `<p style="margin-top:8px"><button id="tourAgain" aria-keyshortcuts="T">Show tips again (T)</button></p>` : '';
-  // round 8: what is always visible vs inside "Read more" (spec §2.2); the text itself is unchanged
-  // round 14: the overview has one "Read more" at the bottom: whatever a level would fold away is collected into it (ovMore)
   const moreBox = h => h ? `<details class="more"${MORE ? ' open' : ''}><summary>Read more</summary>${h}</details>` : '', ovExtra = [];
   const more = h => key === 'overview' ? (h && ovExtra.push(h), '') : moreBox(h);
   let body, title;
   if (LEVEL === 'beginner' && b) { title = b.title; body = `<h2>${b.title}</h2><div class="one">${b.idea}</div><p>${b.analogy}</p>`
     + more(`<div class="lab">Look</div><p>${b.look}</p><div class="lab">Try</div><p>${b.try}</p>`) + `${chips}${tipsBtn}`; }
-  // round 14: expert = technical prose first (e.prose), then the summary line, equations, shapes, ONNX nodes and refs as supporting
-  // detail under "Maths and ONNX" (on the overview they join its single "Read more")
   else if (LEVEL === 'expert' && e) { title = e.title; const mathBox = h => key === 'overview' ? more(h) : h ? `<details class="more"${MORE ? ' open' : ''}><summary>Maths and ONNX</summary>${h}</details>` : '';
     body = `<h2>${e.title}</h2>` + (e.prose ? `<p class="prose">${e.prose}</p>` : `<div class="one">${e.summary}</div>`)
     + mathBox((e.prose ? `<div class="one">${e.summary}</div>` : '') + (e.math && e.math.length ? `<pre>${e.math.join('\n')}</pre>` : '')
@@ -997,11 +892,11 @@ function showCard(key) {
       + (e.refs && e.refs.length ? `<div class="src">${e.refs.join(' · ')}</div>` : '')); }
   else { title = p.title || ''; body = `<h2>${p.title || ''}</h2><div class="one">${p.oneLine || ''}</div><p>${p.simple || ''}</p>${chips}`
     + (key === 'overview' ? '' : more((p.why ? `<p class="why">${p.why}</p>` : '') + (techT ? `<details><summary>Technical details</summary>${techT}</details>` : ''))); }
-  const ovMore = key === 'overview' ? moreBox(ovExtra.join('') + (p.why ? `<p class="why">${p.why}</p>` : '') + legend + (D ? `<div class="src">${D.meta.user} · JS recompute vs ONNX, all shown frames: max |Δ| ${maxDiff.toExponential(1)}</div>` : '')) : '';   // one "Read more" on the overview
-  const fk = focusKeyIn(card);                     // a11y F11: keep focus on the same control across the rebuild
-  card.innerHTML = cardHTML(lvlBar, title, body + (key === 'overview' ? startG + ovMore : ''));
-  card.querySelectorAll('.lvl button').forEach(btn => btn.onclick = () => { LEVEL = btn.dataset.l; try { localStorage.setItem('k8level', LEVEL); } catch { /* not kept */ } showCard(key);
-    if (GUIDE.on()) return GUIDE.refresh();       // the walkthrough: the bubble's expert line follows the level
+  const ovMore = key === 'overview' ? moreBox(ovExtra.join('') + (p.why ? `<p class="why">${p.why}</p>` : '') + legend + (D ? `<div class="src">${D.meta.user} · JS recompute vs ONNX, all shown frames: max |Δ| ${maxDiff.toExponential(1)}</div>` : '')) : '';
+  const fk = focusKeyIn(card);
+  card.innerHTML = cardHTML(lvlBar, title, PW(body + (key === 'overview' ? startG + ovMore : '')));
+  card.querySelectorAll('.lvl button').forEach(btn => btn.onclick = () => { LEVEL = btn.dataset.l; try { localStorage.setItem('k8level', LEVEL); } catch {  } showCard(key);
+    if (GUIDE.on()) return GUIDE.refresh();
     if (build >= 0 && key === STEPS[build]) { if (LEVEL === 'beginner') TOUR.enter(key); else TOUR.close(); } });
   const gc = document.getElementById('guideCard'); if (gc) gc.onclick = () => GUIDE.start(0);
   const cc = document.getElementById('cmpCard'); if (cc) cc.onclick = () => { tC.checked = true; tC.onchange(); };
@@ -1015,8 +910,7 @@ function showCard(key) {
   card.classList.add('show'); cardWire(fk);
   document.querySelectorAll('.lbl.click').forEach(e => e.classList.toggle('on', e.dataset.key === key));
 }
-// round 8: the card frame (sticky header: level, title for the minimised pill, minimise, close) and its behaviour
-let MORE = false; try { MORE = sessionStorage.getItem('k8more') === '1'; } catch { /* default closed */ }
+let MORE = false; try { MORE = sessionStorage.getItem('k8more') === '1'; } catch {  }
 const cardHTML = (lvlBar, title, body) => `<div class="hd">${lvlBar}<span class="ttl">${title || ''}</span><span class="sp"></span>`
   + `<button class="min b-ghost" aria-label="Minimise explanation" data-tip="Minimise" data-kbd="I">${svgI('minus')}</button>`
   + `<button class="x b-ghost" aria-label="Close explanation" data-tip="Close">${svgI('x')}</button></div><div class="bd">${body}</div>`;
@@ -1026,7 +920,7 @@ function cardWire(fk) {
   card.querySelector('.x').onclick = () => { card.classList.remove('show'); cardOffset(false); };
   card.querySelector('.min').onclick = e => { e.stopPropagation(); setCardMin(!card.classList.contains('min')); };
   card.querySelector('.hd').onclick = e => { if (card.classList.contains('min') && !e.target.closest('.x')) setCardMin(false); };
-  card.querySelectorAll('details.more').forEach(d => d.addEventListener('toggle', () => { MORE = d.open; try { sessionStorage.setItem('k8more', MORE ? '1' : '0'); } catch { /* not kept */ } fadeBd(); }));
+  card.querySelectorAll('details.more').forEach(d => d.addEventListener('toggle', () => { MORE = d.open; try { sessionStorage.setItem('k8more', MORE ? '1' : '0'); } catch {  } fadeBd(); }));
   const bd = card.querySelector('.bd'); bd.scrollTop = 0; bd.onscroll = fadeBd; fadeBd();
   if (fk) { const el = card.querySelector(fk); if (el) el.focus(); }
 }
@@ -1039,10 +933,6 @@ function setCardMin(on, focus = true) {
   if (focus) (on ? h : card.querySelector('.min')).focus();
   fadeBd();
 }
-// round 6: the compression panel. Numbers only from MODELS.md / review/*_findings.md (numbers_findings M1: each counterfactual removes ONE method).
-// Waterfall, all mirror-tied: dense blocks + a 60-output readout = 256 + 3 × 16,416 + 1,940 = 51,444 → separable blocks → 9,204 → polynomial readout → 7,555.
-// Mirror tying is shown beside it: the same k8 without tying has 15,113 parameters (counted, jacob/ablations/README.md:406). An untied dense model was never
-// counted, so it is not a waterfall start. Hovering a layer glows it in 3D and says what its method does.
 const CMP = {
   layers: [['proj', 'Projection', 256, '#3fb8a3'], ['blk0', 'Block 1', 2336, '#9b8cff'], ['blk1', 'Block 2', 2336, '#9b8cff'], ['blk2', 'Block 3', 2336, '#9b8cff'], ['head', 'Readout', 291, '#f0b24a']],
   say: {
@@ -1064,9 +954,8 @@ const CMP = {
   },
 };
 function compressionCard() {
-  card.classList.remove('cmp'); card.classList.add('cmpd'); cardOffset(true);   // round 12: docked on the left; the story plays in 3D   // round 10: a wide centred overlay (no camera offset)
+  card.classList.remove('cmp'); card.classList.add('cmpd'); cardOffset(true);
   const L = CMP.say[LEVEL] || CMP.say.standard, fmt = n => n.toLocaleString('en');
-  // waterfall (horizontal bars, log-free linear scale on 51,444)
   const W = 340, X0 = 70, X1 = W - 6, RH = 32, sc = v => (v / 51444) * (X1 - X0);
   const steps = [['start', 'dense blocks + 60-output readout (tied)', 51444, 0, '#5b6780'],
     ['sep', 'depthwise-separable blocks (×7.0 each)', 9204, -42240, '#9b8cff'],
@@ -1079,12 +968,11 @@ function compressionCard() {
         : `<rect x="${X0 + sc(total)}" y="${y}" width="${Math.max(1.5, sc(from - total))}" height="11" rx="2" fill="${col}" opacity=".85"/><rect x="${X0}" y="${y + 4}" width="${sc(total)}" height="3" fill="#2c2c2c"/>`)
       + `<text x="0" y="${y + 24}" fill="#8f8f8f" font-size="11">${t} → ${fmt(total)}</text></g>`; });
   wf += `<text x="0" y="${6 + 4 * RH + 6}" fill="#eaeaea" font-size="13" font-weight="500">= 7,555 parameters</text>`;
-  // per-layer stacked bar (= 7,555)
   let x = 0, bar = '';
   CMP.layers.forEach(([k, name, n, col]) => { const w = n / 7555 * W; bar += `<g data-cmp="${k}" style="cursor:pointer"><rect x="${x.toFixed(1)}" y="0" width="${(w - 1).toFixed(1)}" height="16" rx="2" fill="${col}"/>`
     + (w > 40 ? `<text x="${(x + 4).toFixed(1)}" y="28" fill="#a6a6a6" font-size="9.5">${name}</text><text x="${(x + 4).toFixed(1)}" y="40" fill="#808080" font-size="9.5">${fmt(n)}</text>`
       : `<text x="${k === 'proj' ? 0 : W}" y="54" fill="#a6a6a6" font-size="9.5" text-anchor="${k === 'proj' ? 'start' : 'end'}">${k === 'proj' ? '↑ ' : ''}${name} ${fmt(n)}${k === 'proj' ? '' : ' ↑'}</text>`) + '</g>'; x += w; });
-  const rows = [['v5 TCNN', 51900, 228455, 4.4534], ['v6 mirror+grav', 26012, 136606, 4.3584], ['v7 compress', 6651, 52243, 4.4186], ['v8 sep+angular', 6651, 52243, 4.3289], ['v9 k8', 7555, 44196, 4.2666], ['k8 final', 7555, 44196, 4.1836]];   // fable-traces, 13 Nov 2026: last row = the model shown, final_k8_combined_v10_s42 (same k8 network, final recipe, 5,243 training players). All six errors are the PC runs in nic/pc_runs/PC_RUNS.md (group-a-v2-test20); 44,196 = size of Submission/Motion_Pending_headpose/model_fp32.onnx. The 1,600-player row (4.2365, not a PC run) was removed.
+  const rows = [['v5 TCNN', 51900, 228455, 4.4534], ['v6 mirror+grav', 26012, 136606, 4.3584], ['v7 compress', 6651, 52243, 4.4186], ['v8 sep+angular', 6651, 52243, 4.3289], ['v9 k8', 7555, 44196, 4.2666], ['k8 final', 7555, 44196, 4.1836]];
   let h = ''; rows.forEach((r, i) => { const y = 14 + i * 22; h += `<text x="0" y="${y + 9}" fill="${i === 5 ? '#eaeaea' : '#808080'}" font-size="9">${r[0]}</text>
     <rect x="86" y="${y}" width="${r[1] / 51900 * 90}" height="8" rx="2" fill="#3fb8a3"/><rect x="190" y="${y}" width="${r[2] / 228455 * 70}" height="8" rx="2" fill="#9b8cff"/>
     <rect x="272" y="${y}" width="${(r[3] - 4.1) / .36 * 60}" height="8" rx="2" fill="#6fa8ff"/><text x="336" y="${y + 9}" fill="#c2c2c2" font-size="10">${r[3].toFixed(3)}°</text>`; });
@@ -1106,16 +994,15 @@ function compressionCard() {
   document.getElementById('cmpMirror').onclick = () => cmpGo(4);
   card.querySelectorAll('svg [data-cmp]').forEach(g => g.addEventListener('click', () => { const st = { start: 0, sep: 1, poly: 2, zero: 3 }[g.dataset.cmp]; if (st !== undefined) cmpGo(st); }));
   cmpLabel();
-  card.querySelectorAll('.lvl button').forEach(b => b.onclick = () => { LEVEL = b.dataset.l; try { localStorage.setItem('k8level', LEVEL); } catch { /* not kept */ } compressionCard(); });
+  card.querySelectorAll('.lvl button').forEach(b => b.onclick = () => { LEVEL = b.dataset.l; try { localStorage.setItem('k8level', LEVEL); } catch {  } compressionCard(); });
   const sayEl = card.querySelector('#cmpSay'), SAY = { proj: L.proj, blk0: L.blk0, blk1: L.blk0, blk2: L.blk0, head: L.head, start: LEVEL === 'expert' ? '256 + 3 × 16,416 + 1,940 = 51,444 (every layer tied, no other method).' : 'The same model with dense blocks and a 60-output readout.', sep: L.sep, poly: L.poly, zero: L.zero };
   card.querySelectorAll('[data-cmp]').forEach(g => {
     g.addEventListener('pointerenter', () => { const k = g.dataset.cmp; sayEl.textContent = SAY[k] || ''; glowGroups(k === 'sep' ? ['blk0', 'blk1', 'blk2'] : k === 'poly' ? ['head'] : k === 'zero' ? ['traj', 'feat'] : GROUPS[k] ? [k] : []); });
     g.addEventListener('pointerleave', () => { glowGroups([]); });
-    g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button'); g.setAttribute('aria-label', (SAY[g.dataset.cmp] || g.dataset.cmp).slice(0, 120));   // a11y F17
+    g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button'); g.setAttribute('aria-label', (SAY[g.dataset.cmp] || g.dataset.cmp).slice(0, 120));
     g.addEventListener('focus', () => g.dispatchEvent(new PointerEvent('pointerenter'))); g.addEventListener('blur', () => glowGroups([]));
   });
 }
-// glow whole layers (the compression panel's hover): the same amber glow as the tips, around each group's frame box
 function glowGroups(keys) {
   glowClear(); if (!keys.length) return;
   for (const k of keys) { if (!GROUPS[k] || !GROUPS[k].visible) continue; _box.makeEmpty(); boxOf(k); if (_box.isEmpty()) continue;
@@ -1123,24 +1010,20 @@ function glowGroups(keys) {
   requestRender();
 }
 
-// ================================================================ navigation
 let camTween = null, solo = null, focused = null;
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const HOME = [V(5.5, 8.5, 19), V(4.2, -.3, -3.5)];   // round 14: only the viewing direction (and a fallback); the fit is homeView()
-let atHome = false;                                // true while the camera rests on the fitted whole-model view: a resize re-fits it
-// round 7 (camera flow): the look-at point eases along its path while the camera orbits it on a spherical arc (direction slerped, distance
-// lerped), so a move pans / dollies around what it looks at instead of cutting a straight line through walls. Cubic ease-in-out,
-// 0.8–2 s by distance; a new move during a flight starts from the current pose with an ease-out, so it carries on instead of restarting.
-// camera.up stays (0, 1, 0). Reduced motion: a cut.
+const HOME = [V(5.5, 8.5, 19), V(4.2, -.3, -3.5)];
+let atHome = false;
+let atStep = false;
 const _qI = new THREE.Quaternion(), _qT = new THREE.Quaternion(), _od = new THREE.Vector3();
 function fly(p, t, fog) {
-  setFog(fog);                                     // viz-look P1: only a step's own picture carries a depth fade; every other flight clears it
-  atHome = false;                                  // any other move leaves the fitted view (goHome sets it again after its own fly)
+  setFog(fog);
+  atHome = atStep = false;
   if (reduce) { camTween = null; camera.position.copy(p); controls.target.copy(t); requestRender(); return; }
   const p0 = camera.position.clone(), t0 = controls.target.clone(), o0 = p0.clone().sub(t0), o1 = p.clone().sub(t);
   const l0 = Math.max(1e-3, o0.length()), l1 = Math.max(1e-3, o1.length()), n0 = o0.clone().divideScalar(l0), n1 = o1.clone().divideScalar(l1);
   const d = t0.distanceTo(t) + Math.abs(l1 - l0) + n0.angleTo(n1) * Math.min(l0, l1);
-  camTween = { t0, t, p: p.clone(), n0, l0, l1, q: new THREE.Quaternion().setFromUnitVectors(n0, n1), s: performance.now(), dur: Math.min(2000, Math.max(800, 800 + d * 110)), cont: !!camTween && performance.now() - camTween.s > 60 };   // a flight replaced in its first frames (showBuild, then the guide's own move) still eases in
+  camTween = { t0, t, p: p.clone(), n0, l0, l1, q: new THREE.Quaternion().setFromUnitVectors(n0, n1), s: performance.now(), dur: Math.min(2000, Math.max(800, 800 + d * 110)), cont: !!camTween && performance.now() - camTween.s > 60 };
   requestRender();
 }
 function stepTween(now) {
@@ -1159,26 +1042,23 @@ function setSolo(name) {
   floor.visible = !name;
   soloTrim(name ? feeds[name] || [] : []);
 }
-// round 5: an isolated part keeps the layers it reads, but of each such layer only its output: anything of it that reaches further upstream
-// (its own memory box and taps, fans, tubes, node rows, lines) would point at a layer that is hidden, so it is hidden too (and restored)
 let SOLOHIDE = [];
 function soloTrim(feedKeys) {
   for (const o of SOLOHIDE) { o.visible = true; o.userData.soloHide = false; } SOLOHIDE = [];
   if (!feedKeys.length) return;
   scene.updateMatrixWorld(true); const wp = V(0, 0, 0), bb = new THREE.Box3();
   for (const k of feedKeys) {
-    const g = GROUPS[k]; if (!g || k === 'input') continue;          // the input has nothing upstream
+    const g = GROUPS[k]; if (!g || k === 'input') continue;
     let gMax = -Infinity; const ext = [];
     for (const c of g.children) {
       if (c.userData.glow) continue;
       let lo, hi;
-      // a wall (instanced cells) is flat at one layer: its downstream x is its place (one-stream mode parks h¹ cells at the origin, which would drag its box upstream)
       if (c.isInstancedMesh) { c.computeBoundingBox(); bb.copy(c.boundingBox).applyMatrix4(c.matrixWorld); lo = hi = bb.max.x; }
       else if (c.geometry) { if (!c.geometry.boundingBox) c.geometry.computeBoundingBox(); bb.copy(c.geometry.boundingBox).applyMatrix4(c.matrixWorld); lo = bb.min.x; hi = bb.max.x; }
       else { c.getWorldPosition(wp); lo = hi = wp.x; }
       ext.push([c, lo]); if (!c.isCSS2DObject && c.geometry) gMax = Math.max(gMax, hi);
     }
-    const lim = gMax - .25;                                           // the group's output sits at its most downstream x
+    const lim = gMax - .25;
     for (const [c, lo] of ext) if (c.visible && lo < lim) { c.visible = false; c.userData.soloHide = true; SOLOHIDE.push(c); }
   }
   requestRender();
@@ -1193,35 +1073,27 @@ function boxOf(name) {
   else g.traverse(o => { if (o.isInstancedMesh) { o.computeBoundingBox(); _box.union(o.boundingBox.clone().applyMatrix4(o.matrixWorld)); } else if ((o.isMesh || o.isLineSegments) && o.geometry && !o.userData.noFrame) _box.expandByObject(o); });
   _box.union(b0);
 }
-// round 14: the whole-model view is fitted, not fixed. Box = every visible group (input through the gaze sphere); the camera keeps
-// HOME's viewing direction and is moved until the box's projected corners sit centred, with a small margin, in the largest free
-// rectangle between the card (left), the side panel (right), the brand line (top) and the bar (bottom). The projection includes the
-// card's view offset, so the offset is accounted for. Perspective is not linear, so a few correction passes are run.
 const HOME_DIR = HOME[0].clone().sub(HOME[1]).normalize(), _hc = new THREE.PerspectiveCamera();
 function homeView() {
   _box.makeEmpty(); for (const n of Object.keys(GROUPS)) if (GROUPS[n].visible) boxOf(n);
   if (_box.isEmpty()) return { p: HOME[0].clone(), t: HOME[1].clone() };
   return fitView(_box, HOME_DIR);
 }
-// viz-look P1: the same fit for any box and viewing direction (every step's own picture uses it, see STEP_VIEW)
 function fitView(_box, HOME_DIR, fill = .94) {
   const C = [], mn = _box.min, mx = _box.max;
   for (let i = 0; i < 8; i++) C.push(V(i & 1 ? mx.x : mn.x, i & 2 ? mx.y : mn.y, i & 4 ? mx.z : mn.z));
   const { width: VW, height: VH } = viewport(), m = 16, rects = [];
-  // ticket 06b: K8_EMBED.free = { left, top, width, height } (px, in the element) narrows that rectangle: the story keeps the model in the deck's
-  // free area while the canvas grows past it on the last step
   const ef = EMB() && EMB().free;
-  if (EMB()) rects.push(ef ? { L: ef.left + m, R: ef.left + ef.width - m, T: ef.top + m, B: ef.top + ef.height - m } : { L: m, R: VW - m, T: m, B: VH - m });   // embed: one free rectangle, the whole panel less a 16 px margin (no card, side panel, bar or brand line)
+  if (EMB()) rects.push(ef ? { L: ef.left + m, R: ef.left + ef.width - m, T: ef.top + m, B: ef.top + ef.height - m } : { L: m, R: VW - m, T: m, B: VH - m });
   else {
-  const rOf = id => { const el = document.getElementById(id); if (!el) return null; const r = el.getBoundingClientRect(); return r.width && r.height ? r : null; };   // fixed elements: no offsetParent, so a hidden one shows as a 0 × 0 rect
+  const rOf = id => { const el = document.getElementById(id); if (!el) return null; const r = el.getBoundingClientRect(); return r.width && r.height ? r : null; };
   const cr = card.classList.contains('min') ? null : rOf('card'), sr = rOf('side'), br = rOf('bar');
   const top = 44, bot = (br ? br.top : VH) - 12;
-  // the free rectangles: beside the card or above it, beside the side panel or below it
   for (const [L, B] of cr ? [[cr.right + m, bot], [m, Math.min(bot, cr.top - m)]] : [[m, bot]])
     for (const [R, T] of sr ? [[sr.left - m, top], [VW - m, Math.max(top, sr.bottom + m)]] : [[VW - m, top]])
       if (R - L > 200 && B - T > 150) rects.push({ L, R, T, B });
   if (!rects.length) rects.push({ L: m, R: VW - m, T: top, B: bot });
-  const pf = window.K8Phone && window.K8Phone.free(); if (pf) { rects.length = 0; rects.push(pf); }   // viz-phone: one free rectangle, above the sheet or right of it
+  const pf = window.K8Phone && window.K8Phone.free(); if (pf) { rects.length = 0; rects.push(pf); }
   }
   _hc.copy(camera); _hc.updateProjectionMatrix();
   const tanH = Math.tan(_hc.fov * Math.PI / 360), q = V(0, 0, 0);
@@ -1233,7 +1105,6 @@ function fitView(_box, HOME_DIR, fill = .94) {
       let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
       for (const c of C) { q.copy(c).project(_hc); const x = (q.x + 1) / 2 * VW, y = (1 - q.y) / 2 * VH; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
       const s = Math.max((x1 - x0) / ((r.R - r.L) * fill), (y1 - y0) / ((r.B - r.T) * fill));
-      // slide the look-at point so the box centre lands on the rectangle's centre, then scale the distance to fit
       const perPx = 2 * d * tanH / VH, right = V(1, 0, 0).applyQuaternion(_hc.quaternion), up = V(0, 1, 0).applyQuaternion(_hc.quaternion);
       t.addScaledVector(right, ((x0 + x1) / 2 - (r.L + r.R) / 2) * perPx).addScaledVector(up, -((y0 + y1) / 2 - (r.T + r.B) / 2) * perPx);
       d *= s;
@@ -1242,12 +1113,17 @@ function fitView(_box, HOME_DIR, fill = .94) {
   }
   return { p: best.t.clone().addScaledVector(HOME_DIR, best.d), t: best.t, d: best.d, r: best.r, rects };
 }
+function refitStep() {
+  const v = stepView(STEPS[build]);
+  if (camTween) fly(v.p, v.t, v.fog); else { camTween = null; camera.position.copy(v.p); controls.target.copy(v.t); setFog(v.fog); }
+  atStep = true; buildView = { p: v.p.clone(), t: v.t.clone(), fog: v.fog };
+}
 function goHome(instant) { const h = homeView(); if (instant) { setFog(null); camTween = null; camera.position.copy(h.p); controls.target.copy(h.t); requestRender(); } else fly(h.p, h.t); atHome = true; }
 function focusGroup(name, keepDir) {
   if (!GROUPS[name]) return; _box.makeEmpty(); boxOf(name);
   const c = _box.getCenter(V(0, 0, 0)), size = Math.max(1.5, _box.getSize(V(0, 0, 0)).length());
   let dir = keepDir ? camera.position.clone().sub(controls.target).normalize() : (/^blk/.test(name) ? V(1, .9, .6) : V(.35, .35, 1)).normalize();
-  fly(c.clone().add(dir.multiplyScalar((size * 1.15 + 1.8) * (window.K8Phone ? window.K8Phone.distK() : 1))), c);   // viz-phone: further back when the free rectangle is small
+  fly(c.clone().add(dir.multiplyScalar((size * 1.15 + 1.8) * (window.K8Phone ? window.K8Phone.distK() : 1))), c);
 }
 function select(key, keepDir = false) {
   if (build >= 0 && STEPS.includes(key)) return showBuild(STEPS.indexOf(key));
@@ -1257,17 +1133,15 @@ function select(key, keepDir = false) {
   showCard(key);
 }
 function home() { UPD++; if (CMPS.on && !tC.checked) cmpShow(false); BL.forEach(B => { B.ctx.visible = false; }); if (FLY.on) setFly(false); if (WEAR.on) setWear(false); guideUnstage(); soloTrim([]); GUIDE.onHome(); build = -1; TOUR.close(); resetProposal(); applyFocus(); focused = null; setSolo(null); showCard('overview'); goHome(); stepUI(); }
-// ---- guided build-up: start at the input, each Next adds the next piece onto what is already built
 const STEPS = ['input', 'feat', 'proj', 'mirror', 'blk0', 'blk1', 'blk2', 'reach', 'head', 'traj', 'out', 'gaze'];
 const STEP_NAME = { input: 'Input', feat: 'Features', proj: 'Projection', mirror: 'Mirror', blk0: 'Block 1', blk1: 'Block 2', blk2: 'Block 3', reach: 'Reach', head: 'Readout', traj: 'Trajectory', out: 'Forecast', gaze: 'Head direction' };
-const STEP_GROUPS = { mirror: ['feat', 'proj'], reach: ['tree'] };          // steps that are not a group of their own: whose small labels to show
+const STEP_GROUPS = { mirror: ['feat', 'proj'], reach: ['tree'] };
 const stepHas = g => build >= 0 && (STEP_GROUPS[STEPS[build]] || [STEPS[build]]).some(k => GROUPS[k] === g);
-const PARAMS = { proj: 256, blk0: 2336, blk1: 2336, blk2: 2336, head: 291 };   // 256 + 3 × 2,336 + 291 = 7,555 (features, prior, Cayley: 0)
+const PARAMS = { proj: 256, blk0: 2336, blk1: 2336, blk2: 2336, head: 291 };
 const paramsAt = i => STEPS.slice(0, i + 1).reduce((a, k) => a + (PARAMS[k] || 0), 0);
-let build = 0;                                   // index into STEPS, or -1 = everything shown
+let build = 0;
 const ICON = {left: '<path d="m15 18-6-6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>', flag: '<path d="M4 22V4c4-2 8 2 12 0v10c-4 2-8-2-12 0"/>', rot: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>', play: '<polygon class="f" points="7 4 20 12 7 20 7 4"/>', pause: '<rect class="f" x="6" y="4" width="4" height="16" rx="1"/><rect class="f" x="14" y="4" width="4" height="16" rx="1"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>', route: '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>', plane: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>', minus: '<path d="M5 12h14"/>', up: '<path d="m18 15-6-6-6 6"/>'};
 const svgI = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k]}</svg>`;
-// round 8: the step pill (name; n/12 · params with a progress track) and a Next button with a fixed width and three labels
 function stepUI() {
   const np = build < 0 ? 7555 : paramsAt(build);
   document.getElementById('stepLbl').textContent = build < 0 ? 'Whole model' : STEP_NAME[STEPS[build]];
@@ -1278,9 +1152,6 @@ function stepUI() {
   document.getElementById('call').classList.toggle('show', build >= 0 && /^blk\d$/.test(STEPS[build])); blkCaption(); drawInset();
   document.getElementById('back').disabled = build === 0;
 }
-// viz-look P1: one composed picture per step. box = what the step is about, in design coords [x0, x1, y0, y1, z0, z1]
-// (x = time in units of TS per 10 ms, y = depth in the network, z = channels); dir = where the camera stands relative to it (world axes:
-// x = depth, y = channels, z = time toward the viewer). fitView() centres that box in the free space between the card and the side panel.
 const ZM = Z0 + 32 * ZP;
 const STEP_VIEW = {
   input:  { box: [-2.6, 1.9, -.1, .1, -.4, 2.7], dir: [1, .3, .75], fade: 3 },
@@ -1295,29 +1166,24 @@ const STEP_VIEW = {
   traj:   { box: [-.05, .6, LY.prior - .25, LY.r + .3, -.3, .35], dir: [.6, .45, 1], pad: .1, fade: .7 },
   out:    { box: [-.05, .7, FY - .25, FY + .6, -.35, .45], dir: [.6, .45, 1], pad: .1, fade: .7 },
 };
-window.__k8steps = STEPS; window.__k8sv = STEP_VIEW;                        // debug: tune a step's picture from the console, then showBuild(i) again
+window.__k8steps = STEPS; window.__k8sv = STEP_VIEW;
 const _sb = new THREE.Box3();
 function stepView(key) {
   const s = STEP_VIEW[key], [x0, x1, y0, y1, z0, z1] = s.box, C = []; _sb.makeEmpty();
   for (let i = 0; i < 8; i++) { C.push(W(i & 1 ? x1 : x0, i & 2 ? y1 : y0, i & 4 ? z1 : z0)); _sb.expandByPoint(C[i]); }
   const v = fitView(_sb, V(...s.dir).normalize(), s.fill || .9), n = v.t.clone().sub(v.p).normalize();
-  // depth fade: starts just behind the box's farthest corner (seen from the fitted camera) and is complete `fade` further on
   const far = Math.max(...C.map(c => c.clone().sub(v.p).dot(n)));
   v.fog = { d: v.p.distanceTo(v.t), near: far + (s.pad ?? .3), far: far + (s.pad ?? .3) + (s.fade ?? 2.5) };
   return v;
 }
-// viz-look P1: depth fade. In a step view, whatever lies behind the step's own part (older history, earlier stages) fades into the
-// background colour with distance, so the part stands alone. It is the standard three.js linear fog, display only: no value changes.
-// The distances scale with the camera's distance to its target, so zooming or orbiting keeps the same part clear. Whole model: off.
 scene.fog = new THREE.Fog('#000', 1e3, 2e3);
-if (EMB() && EMB().clear) scene.fog.color.set('#000');   // ticket 06b: on a transparent canvas the depth fade goes to the story's black page, not to the viewer's navy (which reads as a dark box)
+if (EMB() && EMB().clear) scene.fog.color.set('#000');
 let FOGV = null;
 function fogUpdate() {
   const k = FOGV ? camera.position.distanceTo(controls.target) / FOGV.d : 1;
   scene.fog.near = FOGV ? FOGV.near * k : 1e3; scene.fog.far = FOGV ? FOGV.far * k : 2e3;
   labelFog();
 }
-// the name pills of the other stages fade by the same rule as the geometry they name (HTML labels are not touched by the WebGL fog)
 const _lf = new THREE.Vector3(), _ld = new THREE.Vector3();
 function labelFog() {
   if (typeof allLabels === 'undefined' || !scene.fog) return;
@@ -1330,25 +1196,25 @@ function labelFog() {
 function setFog(f) { FOGV = f || null; fogUpdate(); requestRender(); }
 controls.addEventListener('change', fogUpdate);
 function showBuild(i) {
-  if (CMPS.on) { tC.checked = false; document.body.classList.remove('compress'); cmpShow(false); }   // round 12: leaving the whole model ends the story
-  UPD++;   // round 11: the history fade depends on the step, so every shown output repaints
+  if (CMPS.on) { tC.checked = false; document.body.classList.remove('compress'); cmpShow(false); }
+  UPD++;
   if (FLY.on) setFly(false); if (WEAR.on) setWear(false);
-  guideUnstage(); soloTrim([]);                                  // the guide's per-shot hiding is undone before the step sets visibility
+  guideUnstage(); soloTrim([]);
   build = i; solo = null; resetProposal();
   const built = new Set(STEPS.slice(0, i + 1)), key = STEPS[i], prev = STEPS[Math.max(0, i - 1)];
-  for (const [k, g] of Object.entries(GROUPS)) g.visible = key === 'gaze' ? k === 'gaze'            // gaze: the model steps aside (11.1)
+  for (const [k, g] of Object.entries(GROUPS)) g.visible = key === 'gaze' ? k === 'gaze'
     : k === 'links' ? i >= 1 : k === 'tree' ? key === 'reach' || (tTree.checked && i >= STEPS.indexOf('blk2')) : built.has(k);
   floor.visible = key !== 'gaze'; applyFocus();
   focused = key;
   BL.forEach((B, k) => { B.ctx.visible = key === 'blk' + k; });
-  showCard(key); stepUI();                         // viz-look P1: the card and the inset are laid out first, so the camera fit knows the free space
+  showCard(key); stepUI();
   if (key === 'reach') { GROW = { t0: performance.now() + (reduce ? 0 : 900) }; if (reduce) { GROW = null; paintTree(3); } }
-  if (key === 'gaze') { fly(G.position.clone().add(V(1.1, 1.2, 3.4)), G.position.clone()); gazeFollow = true; }   // then the camera eases behind the headset
-  else { const v = stepView(key); fly(v.p, v.t, v.fog); }
-  buildView = camTween ? { p: camTween.p.clone(), t: camTween.t.clone(), fog: FOGV } : { p: camera.position.clone(), t: controls.target.clone(), fog: FOGV };   // the guide's 'build' preset
+  if (key === 'gaze') { fly(G.position.clone().add(V(1.1, 1.2, 3.4)), G.position.clone()); gazeFollow = true; }
+  else { const v = stepView(key); fly(v.p, v.t, v.fog); atStep = true; }
+  buildView = camTween ? { p: camTween.p.clone(), t: camTween.t.clone(), fog: FOGV } : { p: camera.position.clone(), t: controls.target.clone(), fog: FOGV };
   applyHL(); poseHS0();
-  if (!EMB()) TOUR.enter(key);                     // beginner level: the step's tips start once per step per session (embed: no tour)
-  GUIDE.onBuild(i);                                // the walkthrough follows a step the user picked
+  if (!EMB()) TOUR.enter(key);
+  GUIDE.onBuild(i);
 }
 camera.position.copy(HOME[0]); controls.target.copy(HOME[1]);
 const ORDER = ['input', 'feat', 'proj', 'blk0', 'blk1', 'blk2', 'head', 'traj', 'out'];
@@ -1356,37 +1222,31 @@ document.getElementById('next').onclick = () => GUIDE.on() ? GUIDE.jumpStep(1) :
 document.getElementById('back').onclick = () => { if (GUIDE.on()) return GUIDE.jumpStep(-1); if (build > 0) showBuild(build - 1); };
 document.getElementById('guideBtn').onclick = () => GUIDE.on() ? GUIDE.exit() : GUIDE.start(0);
 
-// ================================================================ round 4: the guided walkthrough (guide.js). One shot per tip, camera presets per anchor.
-let GVIEW = null;                                  // the last view guideView() worked out (its fog rides along to the guide's fly)
-let buildView = null;                            // where the current step's showBuild flew (set in showBuild)
-function guideView(at, pr) {                       // camera {p, t} (world) for a shot's preset, or null = keep the camera
+let GVIEW = null;
+let buildView = null;
+function guideView(at, pr) {
   if (pr === 'build') return buildView;
   const f = TOUR_ANCHORS[at], a = f && f(); if (!a || !a.obj || !pr || !pr.dir) return null;
   scene.updateMatrixWorld(true);
-  const t = pr.mem != null ? BL[pr.mem].mem.getWorldPosition(V(0, 0, 0)) : a.obj.localToWorld(a.local.clone());   // mem: the middle of the memory box
-  if (pr.blockMid != null) { const b = pr.blockMid, sp = 7 * DIL[b] * TS; t.copy(W(-sp / 2, (yIn(b) + LY.out(b)) / 2, 0)); }   // round 10: the whole block, both streams, centred on the mirror plane
-  if (pr.ctxMid != null) { const b = pr.ctxMid; t.copy(W(-196 * TS, BL[b].yi, (ctxRowZ(BL[b], 0) + ctxRowZ(BL[b], b)) / 2 - .2)); }   // round 13: the middle of the 3.93 s stack
-  if (pr.mixMid != null) { const b = pr.mixMid; t.copy(W(CX, (LY.dw(b) + LY.upd(b)) / 2, 0)); }   // the plane of the A / B lines (they all lie at x = CX)
-  if (pr.ty != null) t.y = pr.ty;                  // e.g. 0 = on the mirror plane, so both streams are in view
+  const t = pr.mem != null ? BL[pr.mem].mem.getWorldPosition(V(0, 0, 0)) : a.obj.localToWorld(a.local.clone());
+  if (pr.blockMid != null) { const b = pr.blockMid, sp = 7 * DIL[b] * TS; t.copy(W(-sp / 2, (yIn(b) + LY.out(b)) / 2, 0)); }
+  if (pr.ctxMid != null) { const b = pr.ctxMid; t.copy(W(-196 * TS, BL[b].yi, (ctxRowZ(BL[b], 0) + ctxRowZ(BL[b], b)) / 2 - .2)); }
+  if (pr.mixMid != null) { const b = pr.mixMid; t.copy(W(CX, (LY.dw(b) + LY.upd(b)) / 2, 0)); }
+  if (pr.ty != null) t.y = pr.ty;
   if (pr.tz != null) t.z = pr.tz; if (pr.tx != null) t.x = pr.tx;
-  const PK = window.K8Phone && window.K8Phone.form() ? window.K8Phone.distK() : 0;   // viz-phone: 0 = desktop; else how much further back the shot stands on a small screen
-  const dist = (pr.mem != null ? Math.max(pr.dist, 7 * DIL[pr.mem] * TS * 1.45 + .6) : pr.blockMid != null ? pr.dist + 7 * DIL[pr.blockMid] * TS * .6 : pr.dist) * (PK || 1);   // back off to fit the memory's whole span in the free middle
-  if (pr.mem != null) t.y = Math.max(0, BL[pr.mem].zMax - .5 * dist * Math.tan(camera.fov * Math.PI / 360));   // keep the box's top edge (where the anchors sit) in the upper half
+  const PK = window.K8Phone && window.K8Phone.form() ? window.K8Phone.distK() : 0;
+  const dist = (pr.mem != null ? Math.max(pr.dist, 7 * DIL[pr.mem] * TS * 1.45 + .6) : pr.blockMid != null ? pr.dist + 7 * DIL[pr.blockMid] * TS * .6 : pr.dist) * (PK || 1);
+  if (pr.mem != null) t.y = Math.max(0, BL[pr.mem].zMax - .5 * dist * Math.tan(camera.fov * Math.PI / 360));
   const p = t.clone().add(V(...pr.dir).normalize().multiplyScalar(dist));
-  // slide camera and target sideways so the target lands mid-way between the card (left) and the inset / gaze key (right), not under them
   const { width: VW, height: VH } = viewport(), rOf = id => { const el = document.getElementById(id); return el && el.classList.contains('show') && !el.classList.contains('min') ? el.getBoundingClientRect() : null; };
-  const cr = rOf('card'), ir = rOf('inset') || rOf('gazeKey'), natural = VW / 2 + (cr ? 200 : 0), want = PK || EMB() ? natural :((cr ? cr.right : 0) + (ir ? ir.left : VW)) / 2;   // viz-phone: the view offset already centres the shot in the free rectangle, so no slide   // cardOffset: +200 px
+  const cr = rOf('card'), ir = rOf('inset') || rOf('gazeKey'), natural = VW / 2 + (cr ? 200 : 0), want = PK || EMB() ? natural :((cr ? cr.right : 0) + (ir ? ir.left : VW)) / 2;
   const perPx = 2 * dist * Math.tan(camera.fov * Math.PI / 360) / VH, right = t.clone().sub(p).cross(V(0, 1, 0)).normalize();
   const t0 = t.clone(), sh = right.multiplyScalar((natural - want) * perPx); p.add(sh); t.add(sh);
-  // viz-look P1: the readout, trajectory and forecast shots look back toward Block 3 from close by; the same depth fade as the step view
-  // keeps its 4 s wall from filling the frame behind the small part the tip points at
   const fog = /^(head|traj|out)\./.test(at) ? { d: dist, near: dist + .8, far: dist + 2.3 } : null;
-  return (GVIEW = { p, t, t0, fog });              // t0: the unshifted target (staging trims relative to it)
+  return (GVIEW = { p, t, t0, fog });
 }
-// per-shot staging: hide whatever would stand between the camera and the shot's anchor (preset keep / trim); undone on the next shot,
-// on exit and by every showBuild / home / setSolo (they set the groups' visibility themselves)
 let GSTAGE = [], GLB = null, GDIM = [];
-const GXL = new THREE.Group(); MODEL.add(GXL);       // round 7: labels a guide shot adds (the mixing shot's stream names); cleared on unstage                       // GLB: the connection brightness to restore after a shot raised it
+const GXL = new THREE.Group(); MODEL.add(GXL);
 function guideUnstage() {
   for (const o of GXL.children.slice()) { GXL.remove(o); if (o.element) o.element.remove(); }
   for (const [m, c] of GDIM) m.color.copy(c); GDIM = [];
@@ -1399,7 +1259,7 @@ function guideUnstage() {
 function guideStage(at, pr, t) {
   guideUnstage(); if (!pr || !(pr.keep || pr.live != null || pr.hide || pr.lb || pr.mix != null || pr.feedKey)) return;
   const a = at && TOUR_ANCHORS[at] && TOUR_ANCHORS[at](), groups = Object.values(GROUPS), keep = new Set((pr.keep || []).map(k => GROUPS[k]));
-  const holds = (c, o) => { for (; o; o = o.parent) if (o === c) return true; return false; };   // c is (an ancestor of) the anchor
+  const holds = (c, o) => { for (; o; o = o.parent) if (o === c) return true; return false; };
   if (a) for (let o = a.obj; o; o = o.parent) if (groups.includes(o)) keep.add(o);
   const hide = o => { GSTAGE.push([o, o.visible]); o.visible = false; o.userData.gHide = true; };
   if (pr.keep) for (const g of groups) if (g.visible && !keep.has(g)) hide(g);
@@ -1410,29 +1270,25 @@ function guideStage(at, pr, t) {
       let maxX;
       if (c.isInstancedMesh) { c.computeBoundingBox(); maxX = c.boundingBox.clone().applyMatrix4(c.matrixWorld).max.x; }
       else if (c.geometry) { if (!c.geometry.boundingBox) c.geometry.computeBoundingBox(); maxX = c.geometry.boundingBox.clone().applyMatrix4(c.matrixWorld).max.x; }
-      else { c.getWorldPosition(wp); maxX = wp.x; }   // labels and empty groups: their position
+      else { c.getWorldPosition(wp); maxX = wp.x; }
       if (maxX < lim) hide(c);
     }
   }
-  // round 5 block-shot effects: walls clipped to the live part, the block's own output wall out of the way, brighter connections,
-  // and for the mixing shot one output channel (the most active h⁰ update this call) with only its A and B lines lit
-  if (pr.live != null) { CLIP_LIVE = { z: pr.live * TS + TS / 2, groups: new Set(Object.keys(GROUPS).filter(k => k !== 'gaze')) }; PLANE_LIVE.constant = CLIP_LIVE.z; applyClip(); }   // every layer: memory span + now
+  if (pr.live != null) { CLIP_LIVE = { z: pr.live * TS + TS / 2, groups: new Set(Object.keys(GROUPS).filter(k => k !== 'gaze')) }; PLANE_LIVE.constant = CLIP_LIVE.z; applyClip(); }
   for (const k of pr.hide || []) if (GROUPS[k] && GROUPS[k].visible) hide(GROUPS[k]);
   if (pr.lb) { GLB = LB; LB = LB * pr.lb; }
-  if (pr.feedKey && GROUPS[pr.feedKey]) GROUPS[pr.feedKey].traverse(o => { const m = o.material; if (!m || !m.color || o.userData.glow) return; GDIM.push([m, m.color.clone()]); m.color.multiplyScalar(.3); });   // round 10: the layer it reads at 30%
-  if (pr.mix != null && D) { const b = pr.mix, u = relu(pointwise(b, depthwise(b, idx))); let o = 0; u[0].forEach((v, i) => { if (v > u[0][o]) o = i; }); if (!(u[0][o] > 0)) { const h0 = depthwise(b, idx)[0]; h0.forEach((v, i) => { if (Math.abs(v) > Math.abs(h0[o])) o = i; }); } GMIX = { b, o };   // round 10b: fall back to the most active input if every update is 0
-    for (const [txt, z] of [['h⁰ observed stream · solid A lines mix within it', zc(0, 14)], ['h¹ mirrored stream · dashed B lines cross the mirror plane', zc(1, 14)]]) {   // mid-height, clear of the frame edges
+  if (pr.feedKey && GROUPS[pr.feedKey]) GROUPS[pr.feedKey].traverse(o => { const m = o.material; if (!m || !m.color || o.userData.glow) return; GDIM.push([m, m.color.clone()]); m.color.multiplyScalar(.3); });
+  if (pr.mix != null && D) { const b = pr.mix, u = relu(pointwise(b, depthwise(b, idx))); let o = 0; u[0].forEach((v, i) => { if (v > u[0][o]) o = i; }); if (!(u[0][o] > 0)) { const h0 = depthwise(b, idx)[0]; h0.forEach((v, i) => { if (Math.abs(v) > Math.abs(h0[o])) o = i; }); } GMIX = { b, o };
+    for (const [txt, z] of [['h⁰ observed stream · solid A lines mix within it', zc(0, 14)], ['h¹ mirrored stream · dashed B lines cross the mirror plane', zc(1, 14)]]) {
       const el = document.createElement('div'); el.className = 'lbl hl'; el.textContent = txt; const o2 = new CSS2DObject(el); o2.position.set(CX, LY.dw(b) - .35, z); GXL.add(o2); } }
   if (D) update();
   requestRender();
 }
-// round 5: per-shot effects that do not belong to the camera (cleared on every shot, DOM shots included): the readout's own inset
 function guideFx(s) {
   const had = !!guideInset; guideInset = null; sideEl.classList.remove('gwide');
   if (s && s.t && s.t.at === 'head.grid') { guideInset = basis3; sideEl.classList.add('gwide'); }
   if (had || guideInset) drawInset();
 }
-// the readout shot's inset: per axis, the three basic curves scaled by this call's dials, and their sum ("3 curves → 1"). Values from the trace.
 function basis3(f) {
   if (!f || !f.coef) return '';
   const KS = Array.from({ length: H + 1 }, (_, k) => k), cols = ['#8fe3ff', '#c9a6ff', '#ff9ad5'], PW = ['κ', 'κ²', 'κ³'];
@@ -1460,19 +1316,18 @@ const GUIDE = window.K8GUIDE.create({
   started: on => { if (on) { if (FLY.on) setFly(false); if (WEAR.on) setWear(false); } const b = document.getElementById('guideBtn'); b.innerHTML = `${svgI(on ? 'x' : 'route')}<span class="bl">Tour</span>`; b.setAttribute('aria-pressed', on);
     b.setAttribute('aria-label', on ? 'Exit guided tour' : 'Guided tour'); b.dataset.tip = on ? 'Exit the guided tour' : 'Guided tour: the whole model, one tip at a time';
     flyBtn.disabled = on; flyBtn.dataset.tip = on ? 'Exit the tour to fly (Esc)' : 'Fly through the model with W A S D and the mouse';
-    if (card.classList.contains('show')) showCard(build >= 0 ? STEPS[build] : 'overview'); },   // the card's tips / start buttons follow
+    if (card.classList.contains('show')) showCard(build >= 0 ? STEPS[build] : 'overview'); },
 });
-// in-page check (console: await __k8.guideCheck()): walks every shot, resolves its anchor and its camera
 async function guideCheck() {
   const was = GUIDE.on(), frames = k => new Promise(r => { const f = () => --k ? requestAnimationFrame(f) : r(); requestAnimationFrame(f); }), out = [];
   const fin = v => !!v && [v.p.x, v.p.y, v.p.z, v.t.x, v.t.y, v.t.z].every(Number.isFinite);
   GUIDE.start(0);
   for (let m = 0; m < GUIDE.SHOTS.length; m++) {
     GUIDE.go(m); await frames(3);
-    for (let t = 0; t < 360 && GUIDE.state().waiting; t++) await frames(1);   // round 7: flights now take up to 2 s   // until the flight lands and the bubble (and its glow) shows
+    for (let t = 0; t < 360 && GUIDE.state().waiting; t++) await frames(1);
     const s = GUIDE.SHOTS[m]; let anchorOk = true, camOk = true;
     const glowOk = s.end ? true : s.t.dom ? !!document.querySelector('.gHL') : GLM.length > 0;
-    let onGlow = true;                              // round 7: the anchor point lies inside one of the glow boxes (the pointer ends on what glows)
+    let onGlow = true;
     if (!s.end && !s.t.dom && s.t.at) { const a = TOUR_ANCHORS[s.t.at] && TOUR_ANCHORS[s.t.at](); if (a && a.obj) { const P = a.obj.localToWorld(a.local.clone());
       onGlow = GLM.some(m => new THREE.Box3().setFromObject(m).expandByScalar(.03).containsPoint(P)); } }
     if (s.t.dom) { const el = document.querySelector(s.t.dom), r = el && el.getBoundingClientRect(); anchorOk = !!(r && (r.width || r.height)); }
@@ -1487,13 +1342,11 @@ document.getElementById('all').onclick = home;
 document.getElementById('call').onclick = () => oneCall();
 
 const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
-// pointer → normalised device coordinates (−1 … 1) of the 3D view: subtract the viewport's position, divide by its size (y points up)
 const toNDC = e => { const v = viewport(); return mouse.set((e.clientX - v.left) / v.width * 2 - 1, -(e.clientY - v.top) / v.height * 2 + 1); };
 renderer.domElement.addEventListener('dblclick', e => {
   toNDC(e); ray.setFromCamera(mouse, camera);
   const hit = ray.intersectObjects(pickables.filter(m => m.parent.visible))[0]; if (hit) select(hit.object.userData.stage, true);
 });
-// single click (not a drag) in 3D: features → a row; projection → a channel; blocks → a channel (5.2); readout → a coefficient. A miss clears the pick.
 let downXY = null;
 renderer.domElement.addEventListener('pointerdown', e => { downXY = [e.clientX, e.clientY]; });
 renderer.domElement.addEventListener('click', e => {
@@ -1503,26 +1356,21 @@ renderer.domElement.addEventListener('click', e => {
   if (!targets) return;
   toNDC(e); ray.setFromCamera(mouse, camera);
   const hit = ray.intersectObjects(targets)[0], id = hit && hit.instanceId != null ? hit.instanceId : null;
-  if (key === 'feat') { U.fpick = id === null ? null : Math.floor(id / NP) % 7; return refresh(); }          // instance = (sheet·rows + row)·cols + col
+  if (key === 'feat') { U.fpick = id === null ? null : Math.floor(id / NP) % 7; return refresh(); }
   if (key === 'proj') { U.ppick = id === null ? null : { s: Math.floor(id / (32 * NP)), o: Math.floor(id / NP) % 32 }; return refresh(); }
-  if (key === 'head') { U.hpick = id === null ? null : { p: id % 3, a: Math.floor(id / 3) }; if (id !== null) U.htab = 'w'; return refresh(); }   // rows = axis, cols = power
+  if (key === 'head') { U.hpick = id === null ? null : { p: id % 3, a: Math.floor(id / 3) }; if (id !== null) U.htab = 'w'; return refresh(); }
   if (id === null) return setPick(null);
   const k = Math.floor(id / (hit.object === B.out ? NP : 1));
   U.btab = 'ch'; setPick({ b: +m[1], s: Math.floor(k / 32), c: k % 32, t0: performance.now() });
 });
-controls.addEventListener('start', () => { atHome = false; gazeFollow = false; GUIDE.userCamera(); });   // the walkthrough pauses its auto-play
-controls.addEventListener('change', requestRender);                         // orbit, zoom, pan, and every frame while damping settles          // the user orbits: stop following the gaze
+controls.addEventListener('start', () => { atHome = atStep = false; gazeFollow = false; GUIDE.userCamera(); });
+controls.addEventListener('change', requestRender);
 
-// ================================================================ controls
 const scrub = document.getElementById('scrub'), playB = document.getElementById('play'), speed = document.getElementById('speed');
 const tC = document.getElementById('tCompress'), tTree = document.getElementById('tTree'), menu = document.getElementById('menu'), more = document.getElementById('more');
-let playing = !reduce && !EMB(), acc = 0;          // embed: playback starts only when the story asks (K8Viewer.setPlaying)
-const setPlay = v => { playing = v; playB.innerHTML = svgI(v ? 'pause' : 'play'); playB.setAttribute('aria-label', v ? 'Pause' : 'Play'); };   // round 8: icon   // round 6: the name says what a press does
+let playing = !reduce && !EMB(), acc = 0;
+const setPlay = v => { playing = v; for (const b of [playB, document.getElementById('wearPlay')]) if (b) { b.innerHTML = svgI(v ? 'pause' : 'play'); b.setAttribute('aria-label', v ? 'Pause' : 'Play'); } };
 const setIdx = i => { if (!D) return; idx = Math.max(D.firstShown, Math.min(D.frames.length - 1, i)); update(); };
-// Playback speed in samples per second: the Speed slider, or while embedded the story's own rate (SPEC C5a). Embedded it plays at real
-// time, 100 samples a second (the recording's rate). embedRateWatch() times the gaps between drawn frames while it plays; if the median
-// of 30 gaps is slower than 30 frames a second, the rate drops for good to the viewer's fastest setting (the Speed slider's maximum),
-// so it cannot flip back and forth. K8Viewer.speed() reports whichever rate is in use.
 const REAL_RATE = 100, EFT = []; let embRate = REAL_RATE;
 const rate = () => EMB() ? embRate : +speed.value;
 function embedRateWatch(gapMs) {
@@ -1533,7 +1381,6 @@ function embedRateWatch(gapMs) {
 }
 playB.onclick = () => setPlay(!playing);
 scrub.oninput = () => setIdx(+scrub.value);
-// round 8: the menu closes on Esc, an outside click or the button; focus moves in on open and back to ⋯ on close
 function setMenu(on, keys = false) { menu.classList.toggle('show', on); more.setAttribute('aria-expanded', on); more.setAttribute('aria-pressed', on);
   if (on) { if (keys) document.getElementById('keysHelp').open = true; (menu.querySelector('input') || menu).focus(); } else if (menu.contains(document.activeElement)) more.focus(); }
 more.onclick = () => setMenu(!menu.classList.contains('show'));
@@ -1543,27 +1390,26 @@ for (const [id, f] of [['lineB', v => (+v).toFixed(1)], ['speed', v => v]]) { co
 document.getElementById('tLines').onchange = e => lines.forEach(l => { if (!l.userData.static) l.visible = e.target.checked; });
 tTree.onchange = () => build >= 0 ? showBuild(build) : setSolo(solo);
 document.getElementById('tLabels').onchange = e => document.body.classList.toggle('nolabels', !e.target.checked);
-document.getElementById('tAllLabels').onchange = e => { document.body.classList.toggle('alllabels', e.target.checked); requestRender(); };   // viz-look P1: the long explanatory labels (.lbl.v)
-tC.onchange = () => { document.body.classList.toggle('compress', tC.checked); if (tC.checked) { if (GUIDE.on()) GUIDE.exit(); home(); compressionCard(); goHome(); cmpShow(true); } else { cmpShow(false); glowGroups([]); showCard(focused || 'overview'); } };   // round 6: the 2D panel on the whole model
+document.getElementById('tAllLabels').onchange = e => { document.body.classList.toggle('alllabels', e.target.checked); requestRender(); };
+tC.onchange = () => { document.body.classList.toggle('compress', tC.checked); if (tC.checked) { if (GUIDE.on()) GUIDE.exit(); home(); compressionCard(); goHome(); cmpShow(true); } else { cmpShow(false); glowGroups([]); showCard(focused || 'overview'); } };
 document.getElementById('tSolo').onchange = e => setSolo(e.target.checked && focused && GROUPS[focused] ? focused : null);
-// isolate keeps the tree with blocks; inputs of a block stay visible so its memory reads make sense
 addEventListener('keydown', e => {
-  if (EMB()) return;                               // embed: no keyboard handling at all; the keys belong to the story (Space scrolls it)
-  if (e.target.tagName === 'SELECT' || (e.target.tagName === 'INPUT' && (e.target.type !== 'checkbox' || e.key === ' ' || e.key === 'Enter'))) return;   // a11y F1: Space / Enter toggle a checkbox
+  if (EMB()) return;
+  if (e.target.tagName === 'SELECT' || (e.target.tagName === 'INPUT' && (e.target.type !== 'checkbox' || e.key === ' ' || e.key === 'Enter'))) return;
   if ((e.target.tagName === 'SUMMARY' || e.target.tagName === 'A') && (e.key === 'Enter' || e.key === ' ')) return;
   if (e.key === 'Escape') hideTip();
-  if (e.key === 'Escape' && menu.classList.contains('show')) { setMenu(false); return; }   // Esc order: menu → tour bubble → guided tour → fly → wear → reset
+  if (e.key === 'Escape' && menu.classList.contains('show')) { setMenu(false); return; }
   if (!e.metaKey && !e.ctrlKey && !e.altKey && !FLY.on) {
     if (e.key === '?') { setMenu(true, true); return; }
     if (e.key === 'i' || e.key === 'I') { if (card.classList.contains('show')) setCardMin(!card.classList.contains('min')); return; }
     if (e.key === 'k' || e.key === 'K') { setSide(!sideEl.classList.contains('collapsed')); return; }
   }
-  if (e.target.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) return;   // let the focused button act (e.g. Show tips again)
-  if (FLY.on && flyKey(e, true)) return;           // round 6: fly mode takes W A S D, Space, Ctrl, Q, Shift, F, Esc and suspends the page's own keys
+  if (e.target.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) return;
+  if (FLY.on && flyKey(e, true)) return;
   if (WEAR.on && e.key === 'Escape') { setWear(false); return; }
   if ((e.key === 'f' || e.key === 'F') && !e.metaKey && !e.ctrlKey && !e.altKey) { setFly(!FLY.on); return; }
-  if (GUIDE.onKey(e)) return;                      // G = start / exit the walkthrough; in it: Esc exits, n / Enter / T next, b back, A auto-play, R resume
-  if (TOUR.onKey(e)) return;                       // T = next tip; Esc closes an open tour first (and only that), before Esc = reset
+  if (GUIDE.onKey(e)) return;
+  if (TOUR.onKey(e)) return;
   if (e.code === 'Space') { e.preventDefault(); setPlay(!playing); }
   else if (e.key === 'ArrowRight') setIdx(idx + 1); else if (e.key === 'ArrowLeft') setIdx(idx - 1);
   else if (e.key === 'n' || e.key === 'Enter') document.getElementById('next').click(); else if (e.key === 'b') document.getElementById('back').click();
@@ -1572,10 +1418,9 @@ addEventListener('keydown', e => {
   else if (e.key === 's') { const t = document.getElementById('tSolo'); t.checked = !t.checked; t.onchange({ target: t }); }
   else if (/^[1-9]$/.test(e.key)) select(ORDER[+e.key - 1]);
 });
-// user picker
 async function loadUser(id) {
   document.getElementById('readout').textContent = 'loading user…';
-  try { prepare(await fetchTrace(id)); } catch (err) { if (EMB()) { readyBad(err); return; }   // embed: no alert banner; the story learns it from K8Viewer.ready
+  try { prepare(await fetchTrace(id)); } catch (err) { if (EMB()) { readyBad(err); return; }
     const b = document.getElementById('banner'); b.style.display = 'block'; b.textContent = `Could not load traces/${id}.js. Serve the k8_3d folder over http (see proposal/RUN.md: python3 -m http.server 8000 --bind 127.0.0.1 --directory k8_3d), then open http://127.0.0.1:8000/proposal/.`; return; }
   scrub.min = D.firstShown; scrub.max = D.frames.length - 1; idx = D.firstShown; update(); if (!focused) showCard('overview');
 }
@@ -1584,17 +1429,11 @@ if (INDEX.length) {
   document.getElementById('userbox').style.display = 'flex';
   INDEX.forEach(u => { const o = document.createElement('option'); o.value = u.id; o.textContent = `${u.label} · ${Math.round(u.mean_speed_deg_s)}°/s · avg error ${u.mean_err20_deg.toFixed(1)}°`; sel.appendChild(o); });
   sel.onchange = () => loadUser(sel.value);
-  // embed: K8_EMBED.user picks the player (the story shows the same player as its clip); an unknown id fails ready rather than show another player
   const want = EMB() && EMB().user, u0 = want || INDEX[0].id;
   if (want && !INDEX.some(u => u.id === want)) readyBad(new Error(`K8_EMBED.user: no trace "${want}" in traces/index.js`));
   else { if (u0 !== INDEX[0].id) sel.value = u0; loadUser(u0); }
 } else if (EMB()) readyBad(new Error('traces/index.js not found'));
 else { const b = document.getElementById('banner'); b.style.display = 'block'; b.textContent = 'traces/index.js not found: run make_trace.py --suite, then reload.'; }
-// ================================================================ round 12: compression as a 3D story
-// Ghost boxes around the real layers, sized by VOLUME to their dense-equivalent parameter counts (verified numbers only, as in the card):
-// blocks 16,416 vs 2,336 each, readout 1,940 vs 291, projection 256 (already tied). States: 0 dense (51,444) → 1 separable blocks (9,204)
-// → 2 polynomial readout (7,555) → 3 the 0-parameter parts flash (7,555) → 4 mirror tying, separate (15,113 → 7,555): untied h¹ copies fade into links.
-// Ghosts are plain meshes (no colour buffers), so the data colours / fingerprint are untouched.
 const CMPS = { on: false, st: 0, anim: false, ghosts: null, untied: null, links: null, shown: 51444 };
 const CMP_STATES = [[51444, 'dense blocks + 60-output readout, all mirror-tied'], [9204, 'depthwise-separable blocks: each block 16,416 → 2,336'],
   [7555, 'polynomial readout: 1,940 → 291'], [7555, 'damped-velocity prior + hand-made features: 0 parameters'], [7555, 'mirror tying (separate, ×2): untied 15,113 → tied 7,555']];
@@ -1606,7 +1445,7 @@ function cmpBuild() {
     const o = new THREE.Group(); o.add(fill, edge); o.position.copy(c).add(V(0, dy, 0)); CG.add(o); const big = Math.cbrt(ratio); o.scale.setScalar(big);
     return { o, fill, edge, big, s: big, a: 1, home: c.clone() }; };
   CMPS.ghosts = { blk0: mk('blk0', 16416 / 2336, '#ff6b5e'), blk1: mk('blk1', 16416 / 2336, '#ff6b5e'), blk2: mk('blk2', 16416 / 2336, '#ff6b5e'), head: mk('head', 1940 / 291, '#f0b24a'), proj: mk('proj', 1, '#3fb8a3') };
-  CMPS.untied = ['proj', 'blk0', 'blk1', 'blk2'].map(k => mk(k, 1, '#9b8cff', -5.2));        // the untied h¹ copies a model without tying would need
+  CMPS.untied = ['proj', 'blk0', 'blk1', 'blk2'].map(k => mk(k, 1, '#9b8cff', -5.2));
   const pairs = CMPS.untied.map(u => [u.o.position.clone(), u.home.clone()]);
   CMPS.links = lineSetPlain(pairs, '#9b8cff'); CG.add(CMPS.links);
   condLabel('dense equivalent (red)', CMPS.ghosts.blk1.home.clone().add(V(0, 2.9, 0)), 'lbl stage', () => CMPS.st === 0, CG);
@@ -1619,20 +1458,18 @@ function cmpBuild() {
 function lineSetPlain(pairs, color) { const pos = new Float32Array(pairs.length * 6); pairs.forEach(([a, b], i) => pos.set([a.x, a.y, a.z, b.x, b.y, b.z], i * 6));
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); const l = new THREE.LineSegments(g, new THREE.LineDashedMaterial({ color, dashSize: .2, gapSize: .15, transparent: true, opacity: 0 })); l.computeLineDistances(); return l; }
 function cmpShow(on) { CMPS.on = on; if (on) { cmpBuild(); cmpGo(0, true); } CG.visible = on; document.getElementById('cmpCount').hidden = !on; if (!on) card.classList.remove('cmpd'); requestRender(); }
-function cmpTargets(st) {   // per ghost: target scale and opacity for a state
+function cmpTargets(st) {
   const G = CMPS.ghosts, T = new Map();
   for (const k of ['blk0', 'blk1', 'blk2']) T.set(G[k], st >= 1 ? [1, st >= 1 ? .15 : 1] : [G[k].big, 1]);
   T.set(G.head, st >= 2 ? [1, .15] : [G.head.big, 1]); T.set(G.proj, [1, st >= 1 ? .15 : .6]);
-  // untied h¹ copies: shown for 1.8 s in state 4, then fade while the dashed links to the shared weights appear
   for (const u of CMPS.untied) T.set(u, [1, st === 4 && performance.now() - CMPS.t0 < 1800 ? 1 : 0]);
   return T;
 }
 function cmpGo(st, instant = false) {
   if (!CMPS.ghosts) return; const was = CMPS.st; CMPS.st = st;
-  // the untied copies sit below the model: frame them for state 4
   if (st === 4) fly(V(5.5, 3.5, 21), V(4.2, -2.8, -3.5)); else if (was === 4) goHome();
   CMPS.t0 = performance.now(); CMPS.instant = instant || reduce;
-  if (st === 4) for (const u of CMPS.untied) { u.a = 1; u.fill.material.opacity = .07; u.edge.material.opacity = .85; }   // the untied copies appear, then fade into the links
+  if (st === 4) for (const u of CMPS.untied) { u.a = 1; u.fill.material.opacity = .07; u.edge.material.opacity = .85; }
   const [n, t] = CMP_STATES[st], el = document.getElementById('cmpCount');
   el.querySelector('.t').textContent = t; CMPS.from = st === 4 ? 15113 : CMPS.shown; CMPS.to = n;
   CMPS.anim = true; cmpLabel(); requestRender();
@@ -1651,14 +1488,13 @@ function cmpStep(dt) {
   CMPS.anim = busy; requestRender();
 }
 
-// ================================================================ round 8: layout glue, tooltip, side panel, keyboard paths
 const sideEl = document.getElementById('side'), barEl = document.getElementById('bar');
-new ResizeObserver(() => { document.documentElement.style.setProperty('--bar-h', `${barEl.offsetHeight}px`); }).observe(barEl);
+new ResizeObserver(() => { const h = `${barEl.offsetHeight}px`, st = document.documentElement.style; if (st.getPropertyValue('--bar-h') === h) return;
+  st.setProperty('--bar-h', h); if (window.K8Phone && window.K8Phone.form()) onResize(); }).observe(barEl);
 function setSide(collapsed) { sideEl.classList.toggle('collapsed', collapsed); const b = document.getElementById('sideCollapse'); b.setAttribute('aria-expanded', !collapsed);
   b.setAttribute('aria-label', collapsed ? 'Expand the side panel' : 'Collapse the side panel'); }
 document.getElementById('sideCollapse').onclick = () => setSide(!sideEl.classList.contains('collapsed'));
 sideEl.querySelectorAll('.sh').forEach(h => h.onclick = () => { const sec = h.parentElement, shut = !sec.classList.contains('shut'); sec.classList.toggle('shut', shut); h.setAttribute('aria-expanded', !shut); });
-// one shared tooltip (spec §4.4): after 400 ms hover, at once on keyboard focus; shows the shortcut
 const tipEl = document.getElementById('tip'); let tipT = null, tipFor = null;
 function showTip(el) { if (EMB()) return; const t = el.dataset.tip; if (!t || el.disabled && !el.dataset.tip) return; tipEl.textContent = t;
   if (el.dataset.kbd) { const k = document.createElement('kbd'); k.textContent = el.dataset.kbd; tipEl.appendChild(k); }
@@ -1671,11 +1507,10 @@ document.addEventListener('pointerover', e => { const el = e.target.closest && e
 document.addEventListener('pointerout', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el && !el.contains(e.relatedTarget)) hideTip(); });
 document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el && el.matches(':focus-visible')) showTip(el); });
 document.addEventListener('focusout', hideTip);
-// inset by keyboard: tabs and buttons (a11y F4), hover charts (F17) and heatmaps (F7)
-insetEl.addEventListener('click', e => { if (e.detail !== 0) return;          // a click made by Enter / Space (pointer clicks are handled on pointerdown)
+insetEl.addEventListener('click', e => { if (e.detail !== 0) return;
   const a = e.target.closest && e.target.closest('[data-act]'); if (a) a.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 })); });
 const GRIDK = {};
-const say = t => { if (!EMB()) document.getElementById('srLive').textContent = t; };   // the spoken status line (embed: silent)
+const say = t => { if (!EMB()) document.getElementById('srLive').textContent = t; };
 insetEl.addEventListener('keydown', e => {
   const t = e.target, d = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[e.key];
   if (t.dataset && t.dataset.hx !== undefined && d && d[0] === 0) { e.preventDefault(); e.stopPropagation();
@@ -1688,8 +1523,7 @@ insetEl.addEventListener('keydown', e => {
     gridPick(g, k[0], k[1]); say(`row ${k[0] + 1} of ${rows}, column ${k[1] + 1} of ${cols}`);
     const again = insetEl.querySelector(`[data-grid="${g}"]`); if (again) again.focus(); }
 });
-// the 3D view by keyboard (a11y F18): Tab to it, arrows orbit, + / − zoom
-renderer.domElement.tabIndex = EMB() ? -1 : 0; renderer.domElement.setAttribute('aria-label', '3D view: arrow keys orbit, + and − zoom');   // embed: not a tab stop (placeDom)
+renderer.domElement.tabIndex = EMB() ? -1 : 0; renderer.domElement.setAttribute('aria-label', '3D view: arrow keys orbit, + and − zoom');
 renderer.domElement.addEventListener('keydown', e => {
   if (FLY.on || WEAR.on || EMB()) return; const k = e.key, rot = { ArrowLeft: [-.08, 0], ArrowRight: [.08, 0], ArrowUp: [0, -.06], ArrowDown: [0, .06] }[k];
   if (!rot && k !== '+' && k !== '=' && k !== '-') return; e.preventDefault(); e.stopPropagation(); camTween = null; gazeFollow = false;
@@ -1698,13 +1532,10 @@ renderer.domElement.addEventListener('keydown', e => {
   camera.position.copy(controls.target).add(off.setFromSpherical(sp)); controls.update(); requestRender();
 });
 
-// ================================================================ round 6: fly mode (B) and wearing the headset (C)
-// Fly: PointerLockControls owns the camera; click the view to lock the mouse; W A S D / Space / Ctrl or Q / Shift; delta-time speed with smooth
-// acceleration; renders only while moving or looking. Disabled during the guided tour. F or the button hands the camera back to orbit at this view.
-const plc = new PointerLockControls(camera, renderer.domElement); plc.pointerSpeed = 0;   // round 7: the page turns the view itself (smoothed); plc only locks the mouse
-const LOOK = { yaw: 0, pitch: 0, ty: 0, tp: 0, sens: 1, tau: .14, e: new THREE.Euler(0, 0, 0, 'YXZ') };   // round 10: tau = look smoothing (s), default smoother
-try { const v = +localStorage.getItem('k8flySmooth'); if (v >= .02 && v <= .3) LOOK.tau = v; } catch { /* default */ }
-try { const v = +localStorage.getItem('k8flySens'); if (v >= .2 && v <= 2.5) LOOK.sens = v; } catch { /* default */ }
+const plc = new PointerLockControls(camera, renderer.domElement); plc.pointerSpeed = 0;
+const LOOK = { yaw: 0, pitch: 0, ty: 0, tp: 0, sens: 1, tau: .14, e: new THREE.Euler(0, 0, 0, 'YXZ') };
+try { const v = +localStorage.getItem('k8flySmooth'); if (v >= .02 && v <= .3) LOOK.tau = v; } catch {  }
+try { const v = +localStorage.getItem('k8flySens'); if (v >= .2 && v <= 2.5) LOOK.sens = v; } catch {  }
 document.addEventListener('mousemove', e => { if (!FLY.on || !plc.isLocked) return;
   const k = .002 * .35 * LOOK.sens; LOOK.ty -= e.movementX * k; LOOK.tp = Math.max(-1.5, Math.min(1.5, LOOK.tp - e.movementY * k)); requestRender(); });
 const FLY = { on: false, keys: new Set(), v: new THREE.Vector3() };
@@ -1712,32 +1543,31 @@ const flyHint = document.getElementById('flyHint'), flyBtn = document.getElement
 function setFly(on) {
   if (on === FLY.on) return;
   if (on && GUIDE.on()) { flyHint.hidden = false; flyHint.textContent = 'Fly mode is off during the guided tour: exit the tour (Esc) first.'; setTimeout(() => { if (!FLY.on) flyHint.hidden = true; }, 2600); return; }
-  if (on && typeof renderer.domElement.requestPointerLock !== 'function') { flyHint.hidden = false; flyHint.textContent = 'Fly mode needs pointer lock, which this browser does not offer; orbit, zoom and pan still work.'; setTimeout(() => { if (!FLY.on) flyHint.hidden = true; }, 3200); return; }   // round 9
+  if (on && typeof renderer.domElement.requestPointerLock !== 'function') { flyHint.hidden = false; flyHint.textContent = 'Fly mode needs pointer lock, which this browser does not offer; orbit, zoom and pan still work.'; setTimeout(() => { if (!FLY.on) flyHint.hidden = true; }, 3200); return; }
   if (on && WEAR.on) setWear(false);
   FLY.on = on; if (on) setFog(null); FLY.keys.clear(); FLY.v.set(0, 0, 0); flyBtn.setAttribute('aria-pressed', on); flyBtn.innerHTML = `${svgI(on ? 'x' : 'plane')}<span class="bl">Fly</span>`; flyBtn.setAttribute('aria-label', on ? 'Leave fly mode' : 'Fly mode');
   if (on) { FLY.restore = { min: card.classList.contains('min'), side: sideEl.classList.contains('collapsed') }; setCardMin(true, false); setSide(true); }
   else if (FLY.restore) { setCardMin(FLY.restore.min, false); setSide(FLY.restore.side); FLY.restore = null; }
-  if (on) { camTween = null; gazeFollow = false; controls.enabled = false; flyHint.innerHTML = FLY_HINT; flyHint.hidden = false;   // round 12: no lock request here; only a click on the view asks
+  if (on) { camTween = null; gazeFollow = false; controls.enabled = false; flyHint.innerHTML = FLY_HINT; flyHint.hidden = false;
     LOOK.e.setFromQuaternion(camera.quaternion, 'YXZ'); LOOK.yaw = LOOK.ty = LOOK.e.y; LOOK.pitch = LOOK.tp = LOOK.e.x;
-    const sl = document.getElementById('flySens'); if (sl) { sl.value = String(LOOK.sens); sl.oninput = () => { LOOK.sens = +sl.value; try { localStorage.setItem('k8flySens', sl.value); } catch { /* not kept */ } }; sl.addEventListener('keydown', ev => ev.stopPropagation()); }
-    const sm = document.getElementById('flySmooth'); if (sm) { sm.value = String(LOOK.tau); sm.oninput = () => { LOOK.tau = +sm.value; try { localStorage.setItem('k8flySmooth', sm.value); } catch { /* not kept */ } }; sm.addEventListener('keydown', ev => ev.stopPropagation()); } }
+    const sl = document.getElementById('flySens'); if (sl) { sl.value = String(LOOK.sens); sl.oninput = () => { LOOK.sens = +sl.value; try { localStorage.setItem('k8flySens', sl.value); } catch {  } }; sl.addEventListener('keydown', ev => ev.stopPropagation()); }
+    const sm = document.getElementById('flySmooth'); if (sm) { sm.value = String(LOOK.tau); sm.oninput = () => { LOOK.tau = +sm.value; try { localStorage.setItem('k8flySmooth', sm.value); } catch {  } }; sm.addEventListener('keydown', ev => ev.stopPropagation()); } }
   else { if (plc.isLocked) plc.unlock(); controls.enabled = true; const d = V(0, 0, 0); camera.getWorldDirection(d);
     controls.target.copy(camera.position).addScaledVector(d, 4); controls.update(); flyHint.hidden = true; }
   requestRender();
 }
 const FLY_HINT = flyHint.innerHTML;
 const FLY_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ControlLeft', 'ControlRight', 'KeyQ', 'ShiftLeft', 'ShiftRight']);
-function flyKey(e, down) {                         // true = consumed (every key is, except browser shortcuts with ⌘ / Alt)
+function flyKey(e, down) {
   if (e.metaKey || e.altKey) return false;
-  if (down && ((e.key === 'f' || e.key === 'F') && !e.ctrlKey || e.key === 'Escape')) { setFly(false); return true; }   // round 8: Esc too, once the mouse is free
-  if (FLY_CODES.has(e.code)) { if (down) FLY.keys.add(e.code); else FLY.keys.delete(e.code);   // round 12: movement works with or without the mouse lock
-    e.preventDefault(); requestRender(); return true; }   // round 9: move only while the mouse is locked
-  return down;                                     // Space play, S isolate, C One call, A, T, n / b, 1–9, Esc → home: all suspended while flying
+  if (down && ((e.key === 'f' || e.key === 'F') && !e.ctrlKey || e.key === 'Escape')) { setFly(false); return true; }
+  if (FLY_CODES.has(e.code)) { if (down) FLY.keys.add(e.code); else FLY.keys.delete(e.code);
+    e.preventDefault(); requestRender(); return true; }
+  return down;
 }
 addEventListener('keyup', e => { if (FLY.on) flyKey(e, false); });
-addEventListener('blur', () => { FLY.keys.clear(); FLY.v.set(0, 0, 0); });   // round 9: no residual glide either
-// round 9 (compat 4): lock directly inside the click (keeps the user gesture; Safari), catch a rejected promise or a pointerlockerror, and reset on unlock
-function lockFailed(err) { if (!FLY.on) return;   // round 12: stay in fly mode; W A S D keep working; only mouse look waits for a lock
+addEventListener('blur', () => { FLY.keys.clear(); FLY.v.set(0, 0, 0); });
+function lockFailed(err) { if (!FLY.on) return;
   flyHint.hidden = false; flyHint.innerHTML = `${FLY_HINT}<div style="margin-top:4px;color:#ffcf6e">The browser did not lock the mouse${err && err.name ? ` (${err.name})` : ''}. Click the view again to look around (after Esc, wait a second); W A S D still move.</div>`; }
 document.addEventListener('pointerlockerror', lockFailed);
 renderer.domElement.addEventListener('click', () => { if (!FLY.on || plc.isLocked) return;
@@ -1747,53 +1577,46 @@ flyBtn.onclick = () => setFly(!FLY.on);
 function flyStep(dt) {
   dt = Math.min(dt, .1); const k = FLY.keys, has = c => k.has(c);
   const fw = (has('KeyW') ? 1 : 0) - (has('KeyS') ? 1 : 0), rt = (has('KeyD') ? 1 : 0) - (has('KeyA') ? 1 : 0);
-  const up = (has('Space') ? 1 : 0) - (has('ControlLeft') || has('ControlRight') || has('KeyQ') ? 1 : 0), sp = 3.2 * (has('ShiftLeft') || has('ShiftRight') ? 3 : 1);   // the model is ~20 units long
-  // look: critically damped toward the mouse target (~80 ms), so the view glides instead of jumping
+  const up = (has('Space') ? 1 : 0) - (has('ControlLeft') || has('ControlRight') || has('KeyQ') ? 1 : 0), sp = 3.2 * (has('ShiftLeft') || has('ShiftRight') ? 3 : 1);
   const al = 1 - Math.exp(-dt / LOOK.tau), dy = LOOK.ty - LOOK.yaw, dp = LOOK.tp - LOOK.pitch;
   if (Math.abs(dy) + Math.abs(dp) > 1e-5) { LOOK.yaw += dy * al; LOOK.pitch += dp * al; LOOK.e.set(LOOK.pitch, LOOK.yaw, 0, 'YXZ'); camera.quaternion.setFromEuler(LOOK.e); requestRender(); }
-  const a = 1 - Math.exp(-dt * (fw || rt || up ? 5 : 4));          // gentle acceleration and a slightly longer glide to a stop
+  const a = 1 - Math.exp(-dt * (fw || rt || up ? 5 : 4));
   FLY.v.x += (rt * sp - FLY.v.x) * a; FLY.v.y += (up * sp - FLY.v.y) * a; FLY.v.z += (fw * sp - FLY.v.z) * a;
   if (FLY.v.lengthSq() < 1e-6) { FLY.v.set(0, 0, 0); return; }
   plc.moveRight(FLY.v.x * dt); plc.moveForward(FLY.v.z * dt); camera.position.y += FLY.v.y * dt; requestRender();
 }
-// Wear it (Gaze step): the camera sits at the gaze-sphere centre with the recorded pose q[t] of this frame — the head mesh's own mapping
-// (quaternion (−x, −y, z, w) in scene space, forward = local −z), so the view centre is the white "looking now" ray and roll tilts the view.
-// No smoothing: each frame is exactly q[t]. Dragging adds a small look-around offset that springs back; the data does not change.
-// wear fix: the 200 ms turns are a few degrees, so the view opens zoomed in (FOV 20°, scroll 8–90°); dots keep ~8 px whatever the zoom, and
-// dashed rings at 1 / 2 / 5 / 10° around the looking-now point make the gaps readable in degrees. Drawing only: no value changes.
 const WEAR = { on: false, off: new THREE.Euler(0, 0, 0, 'YXZ'), drag: null, q: new THREE.Quaternion(), oq: new THREE.Quaternion(), last: new THREE.Quaternion(), fov: 20, key: '' };
 const WEAR_DOTS = () => [...predDots, ...truthDots, ...pastDots], WEAR_RINGS = [1, 2, 5, 10];
-const WEAR_CONES = () => G.children.filter(o => o.isMesh && o.geometry.type === 'ConeGeometry');   // the predicted / true arrow heads
+const WEAR_CONES = () => G.children.filter(o => o.isMesh && o.geometry.type === 'ConeGeometry');
 const wearRing = (() => { const pts = []; for (let i = 0; i <= 96; i++) { const a = i / 96 * Math.PI * 2; pts.push(V(Math.cos(a) * 1.5, 0, Math.sin(a) * 1.5)); }
-  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: '#c9a6ff', transparent: true, opacity: .8 })); l.visible = false; G.add(l); return l; })();   // violet, so it is not mistaken for the sphere's grey wireframe
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: '#c9a6ff', transparent: true, opacity: .8 })); l.visible = false; G.add(l); return l; })();
 condLabel('up (world)', V(0, 1.42, 0), 'lbl wear', () => WEAR.on, G); condLabel('horizon (world level)', V(1.4, .04, 0), 'lbl wear', () => WEAR.on, G);
 function setWear(on) {
   if (on === WEAR.on) return;
-  if (on && (build < 0 || STEPS[build] !== 'gaze')) showBuild(STEPS.indexOf('gaze'));   // round 7: works from any view (the button is in the key)
+  if (on && (build < 0 || STEPS[build] !== 'gaze')) showBuild(STEPS.indexOf('gaze'));
   if (on) { if (GUIDE.on()) GUIDE.exit(); if (FLY.on) setFly(false); }
   WEAR.on = on; document.body.classList.toggle('wearing', on);
   headM.visible = !on; bustM.visible = !on; wearRing.visible = on;
-  for (const m of WEAR_DOTS()) { if (m.userData.s0 === undefined) m.userData.s0 = m.scale.x; m.scale.setScalar(m.userData.s0); }   // wearStep sizes them by the FOV
-  document.getElementById('wearRings').toggleAttribute('hidden', !on); WEAR.key = '';   // an <svg> has no .hidden property: use the attribute
+  for (const m of WEAR_DOTS()) { if (m.userData.s0 === undefined) m.userData.s0 = m.scale.x; m.scale.setScalar(m.userData.s0); }
+  document.getElementById('wearRings').toggleAttribute('hidden', !on); WEAR.key = '';
   document.getElementById('wearX').hidden = !on; document.getElementById('wearHud').hidden = !on;
   document.getElementById('wearBtn').textContent = on ? 'Take it off' : 'Wear it';
   if (on) { camTween = null; gazeFollow = false; controls.enabled = false; camera.fov = WEAR.fov; cardOffset(false); setPlay(!reduce); WEAR.off.set(0, 0, 0); }
   else { camera.fov = 40; controls.enabled = true; for (const m of [...WEAR_DOTS(), ...WEAR_CONES()]) if (m.userData.s0 !== undefined) m.scale.setScalar(m.userData.s0); cardOffset(card.classList.contains('show')); gazeFollow = true; }
   camera.updateProjectionMatrix(); if (D) update(); requestRender();
-  TOUR.close(); if (on) TOUR.enter('wear');          // round 15: the outside-view gaze tips go; beginner level gets the wear tips once per session
+  if (on) wearTouchUI();
+  TOUR.close(); if (on) TOUR.enter('wear');
 }
 function wearStep(dt) {
   if (!WEAR.drag) { const k = Math.exp(-dt * 6); WEAR.off.x *= k; WEAR.off.y *= k; if (Math.abs(WEAR.off.x) + Math.abs(WEAR.off.y) < 1e-4) WEAR.off.set(0, 0, 0); }
   headM.getWorldQuaternion(WEAR.q); WEAR.oq.setFromEuler(WEAR.off);
   camera.position.copy(G.position); camera.quaternion.copy(WEAR.q).multiply(WEAR.oq);
-  // dots ~8 px across: a dot of radius .02·s at 1.5 units spans 2·.02·s / (2·1.5·tan(fov/2)) of the view height
-  const { width: VW, height: VH } = viewport();   // wear view: sizes in the viewport's pixels
+  const { width: VW, height: VH } = viewport();
   const k = 8 * 3 * Math.tan(camera.fov * Math.PI / 360) / (VH * .04);
   for (const m of WEAR_DOTS()) { const t = (m.userData.s0 || 1) * k; if (m.scale.x !== t) m.scale.setScalar(t); }
-  const kc = 16 * 3 * Math.tan(camera.fov * Math.PI / 360) / (VH * .14);   // arrow heads (.14 tall) ~16 px, so they do not cover the dots
+  const kc = 16 * 3 * Math.tan(camera.fov * Math.PI / 360) / (VH * .14);
   for (const m of WEAR_CONES()) { if (m.userData.s0 === undefined) m.userData.s0 = m.scale.x; if (m.scale.x !== kc) m.scale.setScalar(kc); }
   if (!camera.quaternion.equals(WEAR.last)) { WEAR.last.copy(camera.quaternion); requestRender(); }
-  // crosshair and degree rings at the projected looking-now point (the head's forward, local −z, on the sphere)
   const P = V(0, 0, -1).applyQuaternion(WEAR.q).multiplyScalar(1.5).add(G.position).project(camera);
   const x = (P.x + 1) / 2 * VW, y = (1 - P.y) / 2 * VH, f = VH / 2 / Math.tan(camera.fov * Math.PI / 360);
   const key = `${x.toFixed(1)},${y.toFixed(1)},${camera.fov.toFixed(2)},${VW},${VH}`;
@@ -1801,11 +1624,30 @@ function wearStep(dt) {
     WEAR.key = key; const X = document.getElementById('wearX'); X.style.left = `${x}px`; X.style.top = `${y}px`;
     document.getElementById('wearRings').innerHTML = WEAR_RINGS.map(d => { const r = f * Math.tan(d * Math.PI / 180);
       return r > Math.hypot(VW, VH) ? '' : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}"/><text x="${(x + r * .707 + 3).toFixed(1)}" y="${(y - r * .707 - 3).toFixed(1)}">${d}°</text>`; }).join('');
-    document.getElementById('wearFov').innerHTML = `field of view <b>${camera.fov.toFixed(0)}°</b> (scroll to zoom, 8–90°)`;
+    document.getElementById('wearFov').innerHTML = `field of view <b>${camera.fov.toFixed(0)}°</b> (${TOUCH() ? '− / + ' : 'scroll '}to zoom, 8–90°)`;
   }
 }
-renderer.domElement.addEventListener('wheel', e => { if (!WEAR.on) return; e.preventDefault();
-  WEAR.fov = Math.max(8, Math.min(90, WEAR.fov * Math.exp(e.deltaY * .0015))); camera.fov = WEAR.fov; camera.updateProjectionMatrix(); requestRender(); }, { passive: false });
+const wearZoom = k => { WEAR.fov = Math.max(8, Math.min(90, WEAR.fov * k)); camera.fov = WEAR.fov; camera.updateProjectionMatrix(); requestRender(); };
+renderer.domElement.addEventListener('wheel', e => { if (!WEAR.on) return; e.preventDefault(); wearZoom(Math.exp(e.deltaY * .0015)); }, { passive: false });
+const TOUCH = () => document.documentElement.classList.contains('touch');
+const WEAR_LEGEND = document.querySelector('#wearHud .m:not([id])'), WEAR_LEGEND0 = WEAR_LEGEND ? WEAR_LEGEND.innerHTML : '';
+function wearTouchUI() {
+  const t = TOUCH(), ex = document.getElementById('wearExit'); let row = document.getElementById('wearTouch');
+  if (t && !row) {
+    row = document.createElement('span'); row.id = 'wearTouch';
+    row.innerHTML = `<button type="button" id="wearOut" class="b-icon" aria-label="Zoom out (wider view)">${svgI('minus')}</button>`
+      + '<button type="button" id="wearIn" class="b-icon" aria-label="Zoom in (narrower view)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg></button>'
+      + `<button type="button" id="wearPlay" class="b-icon"></button>`;
+    ex.parentElement.prepend(row);
+    row.querySelector('#wearOut').onclick = () => wearZoom(1.25); row.querySelector('#wearIn').onclick = () => wearZoom(1 / 1.25);
+    row.querySelector('#wearPlay').onclick = () => { setPlay(!playing); requestRender(); };
+  }
+  if (row) row.hidden = !t;
+  setPlay(playing);
+  ex.textContent = t ? 'Take it off' : 'Take it off (Esc)';
+  if (WEAR_LEGEND) WEAR_LEGEND.innerHTML = t ? WEAR_LEGEND0.replace('scroll to zoom', '− / + to zoom') : WEAR_LEGEND0;
+  WEAR.key = '';
+}
 renderer.domElement.addEventListener('pointerdown', e => { if (WEAR.on) WEAR.drag = { x: e.clientX, y: e.clientY, ox: WEAR.off.x, oy: WEAR.off.y }; });
 addEventListener('pointermove', e => { if (!WEAR.on || !WEAR.drag) return; const d = WEAR.drag;
   WEAR.off.y = Math.max(-.45, Math.min(.45, d.oy - (e.clientX - d.x) * .004)); WEAR.off.x = Math.max(-.35, Math.min(.35, d.ox - (e.clientY - d.y) * .004)); requestRender(); });
@@ -1813,85 +1655,61 @@ addEventListener('pointerup', () => { WEAR.drag = null; });
 document.getElementById('wearBtn').onclick = () => setWear(!WEAR.on);
 document.getElementById('wearExit').onclick = () => setWear(false);
 
-// ---- ticket 06b: the story's model deck, "inside the model" (SPEC H4 to H6). Used only while embedded.
-// One close camera per step. Where the guided tour has a shot of that step's part, the same preset is used (guide.js PRESETS, aimed
-// at a real anchor point through TOUR_ANCHORS by guideView); `pr` overrides a preset where the story wants it nearer or wider.
-// A step without an entry keeps showBuild's own fitted step view. embedShot replaces showBuild's flight before a frame is drawn, so
-// the reader sees one camera move per step, and it is the viewer's own timed, interruptible flight (fly).
 const EMB_SHOT = {
-  input:  null,                                                            // the step's own view: the whole 4-second strip and the headset it comes from
-  feat:   { at: 'feat.fork' },                                             // where the two newest samples fork into the 7 measurements
-  mirror: { at: 'feat.flip', pr: { dir: [.55, .2, 1], dist: 6, ty: 0 } },  // on the mirror plane, both streams in view for the swap
-  blk0:   { at: 'blk0.skip' },                                             // the tour's Block 1 shot from the input side: memory, 8 taps, lanes and skip
-  reach:  null,                                                            // the step's own top-down view: the tree needs all 393 samples in frame
-  head:   { at: 'head.grid' },                                             // close on the nine dials
-  traj:   { at: 'traj.r' },                                                // close on prior + correction = r
-  out:    { at: 'out.scored' },                                            // close on the 20 poses and the scored one
+  input:  null,
+  feat:   { at: 'feat.fork' },
+  mirror: { at: 'feat.flip', pr: { dir: [.55, .2, 1], dist: 6, ty: 0 } },
+  blk0:   { at: 'blk0.skip' },
+  reach:  null,
+  head:   { at: 'head.grid' },
+  traj:   { at: 'traj.r' },
+  out:    { at: 'out.scored' },
 };
-const EMB_SWAP_HOLD = 2200;                                    // mirror: ms each side is held between swaps (a swap itself takes 1 s)
+const EMB_SWAP_HOLD = 2200;
 function embedShot(view) {
   const s = EMB_SHOT[view], now = performance.now();
   if (s) { const v = guideView(s.at, s.pr || window.K8GUIDE.PRESETS[s.at]); if (v) { fly(v.p, v.t, v.fog); buildView = { p: v.p.clone(), t: v.t.clone(), fog: v.fog }; } }
-  const land = camTween ? camTween.dur : 0;                     // the animations start once the camera has arrived
-  if (view === 'head') { U.htab = 'basis'; drawInset(); }      // the readout's inset on its basis-curve tab: κ, κ², κ³ and this call's curve (SPEC H5)
+  const land = camTween ? camTween.dur : 0;
+  if (view === 'head') { U.htab = 'basis'; drawInset(); }
   if (view === 'mirror') EMBT = { at: now + land + 300, fn: embSwap };
   if (view === 'blk0') EMBT = { at: now + land + 200, fn: () => oneCall() };
-  if (view === 'reach' && GROW) GROW.t0 = now + land;          // the tree grows once the camera is above it
+  if (view === 'reach' && GROW) GROW.t0 = now + land;
   requestRender();
 }
-function embSwap(now) {                                        // the mirror swap there and back, repeated while the step is shown
+function embSwap(now) {
   if (build < 0 || STEPS[build] !== 'mirror') return;
   setSwap(!swapped); EMBT = { at: now + 1000 + EMB_SWAP_HOLD, fn: embSwap };
 }
 function embCallAgain(now) { if (build >= 0 && STEPS[build] === 'blk0') EMBT = { at: now + 600, fn: () => oneCall() }; }
 function embedLeave() { EMBT = null; GROUPS.input.position.set(0, 0, 0); }
-// The arrival (SPEC H3): lead 1 → 0 while the deck scrolls into place. The input strip (the viewer's own input group: the 4-second
-// window of samples and its labels) starts one view height above where it belongs, along the camera's up direction, and comes down
-// to rest as the input strip. Only on the input step; a smoothstep makes it settle gently. The group is built in design axes, which the
-// MODEL rotation maps as world (x, y, z) = design (y, z, x), so a world offset w is set as design (w.z, w.x, w.y).
 const _up = new THREE.Vector3();
 function arrive(lead) {
   const g = GROUPS.input; if (!EMB() || !g) return;
   const l = build === 0 ? Math.max(0, Math.min(1, +lead || 0)) : 0, k = l * l * (3 - 2 * l);
-  const h = 2 * camera.position.distanceTo(controls.target) * Math.tan(camera.fov * Math.PI / 360);   // one view height at the target
+  const h = 2 * camera.position.distanceTo(controls.target) * Math.tan(camera.fov * Math.PI / 360);
   _up.set(0, 1, 0).applyQuaternion(camera.quaternion).multiplyScalar(k * h * 1.1);
   if (g.position.x !== _up.z || g.position.y !== _up.x || g.position.z !== _up.y) { g.position.set(_up.z, _up.x, _up.y); requestRender(); }
 }
 setPlay(playing);
-// start at the first step: the input alone. Embedded: at the step the story asked for (K8_EMBED.view), with the camera placed at once
 if (EMB() && EMB().view) { showStep(EMB().view, true); if (camTween) stepTween(camTween.s + camTween.dur); } else showBuild(0);
 
-// ================================================================ P1 (viz-perf): quality tiers
-// body[data-tier] = full | light | min. The data colours are the same on every tier (the fingerprint does not change); a tier only changes how they are drawn.
-//   dpr     highest pixel ratio the 3D canvas uses (pixels drawn per CSS pixel)
-//   glow    the picked / tip glow pulses (which needs a frame drawn every display refresh); off = a steady glow, drawn once
-//   haze    the 2 × 2,048 thin channel-mixing lines of a block are drawn even when that block is not the selected step
-//   small   small labels of parts that are not the current step show when the camera is near
-//   sheets  the six history walls are drawn as flat textured sheets (2 triangles per stream) instead of ~110,000 separate boxes
-//   rate    starting playback speed in samples per second (the Speed slider still overrides it)
-// Also tier-dependent, set where the 3D context is made: edge smoothing (antialiasing) is on only when the page starts on full.
 const TIER_P = { full: { dpr: 1.5, glow: true, haze: true, small: true, sheets: false, rate: 8 },
                  light: { dpr: 1, glow: false, haze: false, small: true, sheets: false, rate: 8 },
                  min: { dpr: .75, glow: false, haze: false, small: false, sheets: true, rate: 4 } };
-// ticket 06b: embedded, the canvas may grow to the whole window on the story's last step, so its drawing buffer uses up to 2 device pixels
-// per CSS pixel (SPEC A6: sharp at the largest size). Not embedded: the tier's own cap, as before.
-const dprCap = () => EMB() ? 2 : TP.dpr;
+const dprCap = () => EMB() ? 2 : BOOT.phone && TIER !== 'min' ? 2 : TP.dpr;
 let TIER = null, TP = TIER_P.full, tierMode = BOOT.tierMode, speedTouched = false, tierHold = 0;
 const HISTW = [SL.input, SL.feat, SL.proj, ...BL.map(B => B.out)];
-ray.layers.enable(1);                               // picking still sees the box walls after the min tier moves them to layer 1 (not drawn)
-// One flat mesh per wall: a quad per stream, coloured by a texture holding the wall's instance colours (width = 400 columns, height = rows).
-// The shader leaves the same gaps between cells as the boxes (82% of a column, 80% of a row) until a cell is smaller than about 3 pixels.
+ray.layers.enable(1);
 function wallSheet(M) {
   const g = M.userData.grid, R = g.rows * g.sheets, pos = [], uv = [], ind = [];
   const pitch = g.rows > 1 ? g.zf(0, 1) - g.zf(0, 0) : ZP;
   for (let s = 0; s < g.sheets; s++) { const p = g.rows > 1 ? g.zf(s, 1) - g.zf(s, 0) : ZP, zA = g.zf(s, 0) - p / 2, zB = g.zf(s, g.rows - 1) + p / 2,
       xA = g.x0 - g.dx / 2, xB = g.x0 + (g.cols - .5) * g.dx, v0 = s * g.rows / R, v1 = (s + 1) * g.rows / R, yA = g.y - g.h / 2, yB = g.y + g.h / 2, xN = g.x0 - g.dx * .41, uN = .5 / g.cols;
-    // three quads per stream: the wall's two faces (where the boxes' front and back faces were) and an end cap at "now" showing the newest column
     for (const q of [[xA, yA, zA, xB, yA, zA, xB, yA, zB, xA, yA, zB, 0, 1], [xA, yB, zA, xB, yB, zA, xB, yB, zB, xA, yB, zB, 0, 1], [xN, yA, zA, xN, yB, zA, xN, yB, zB, xN, yA, zB, uN, uN]]) {
       const k = pos.length / 3; pos.push(...q.slice(0, 12)); uv.push(q[12], v0, q[13], v0, q[13], v1, q[12], v1); ind.push(k, k + 1, k + 2, k, k + 2, k + 3); } }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(ind);
   const tex = new THREE.DataTexture(new Float32Array(g.cols * R * 4), g.cols, R, THREE.RGBAFormat, THREE.FloatType);
-  const mat = new THREE.ShaderMaterial({ side: THREE.DoubleSide, clipping: true, fog: true,   // fog: the same depth fade as every other part (viz-look)
+  const mat = new THREE.ShaderMaterial({ side: THREE.DoubleSide, clipping: true, fog: true,
     uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), map: { value: tex }, tint: { value: new THREE.Color(1, 1, 1) }, grid: { value: new THREE.Vector2(g.cols, R) }, fill: { value: new THREE.Vector2(.82, ZP * .8 / Math.abs(pitch)) } },
     vertexShader: `varying vec2 vUv;
       #include <fog_pars_vertex>
@@ -1913,7 +1731,7 @@ function wallSheet(M) {
       }` });
   const sh = new THREE.Mesh(geo, mat); sh.userData.noFrame = true; sh.userData.upd = -1; sh.visible = false; M.parent.add(sh); return sh;
 }
-function syncSheets() {                             // before a frame is drawn on the min tier: copy what update() painted, follow the wall's dimming and one-stream state
+function syncSheets() {
   for (const M of HISTW) { const sh = M.userData.sheet; if (!sh) continue; sh.visible = M.visible;
     sh.material.uniforms.tint.value.copy(M.material.color); sh.geometry.setDrawRange(0, ONE && M.userData.grid.sheets === 2 ? 18 : Infinity);
     if (sh.userData.upd !== M.userData.upd || sh.userData.gen !== HGEN) { sh.userData.upd = M.userData.upd; sh.userData.gen = HGEN;
@@ -1931,26 +1749,24 @@ function setTier(t, note) {
   if (note) tierNote(note);
   window.dispatchEvent(new CustomEvent('k8:tier', { detail: { tier: t } })); requestRender();
 }
-function tierNote(html, keep) {                     // a short visible notice (and a spoken one) when the page changes the graphics by itself
-  if (EMB()) return;                                 // embed: the viewer's status regions stay silent
+function tierNote(html, keep) {
+  if (EMB()) return;
   let el = document.getElementById('tierNote');
   if (!el) { el = document.createElement('div'); el.id = 'tierNote'; el.className = 'hud'; el.setAttribute('role', 'status');
     el.style.cssText = 'position:fixed;left:50%;top:52px;transform:translateX(-50%);z-index:30;max-width:min(560px,90vw);padding:8px 12px;border-radius:8px;font-size:13px;pointer-events:auto'; document.body.appendChild(el); }
   el.innerHTML = html + ' <button class="b-ghost" style="margin-left:6px">OK</button>'; el.hidden = false; el.querySelector('button').onclick = () => { el.hidden = true; };
   clearTimeout(tierNote.t); if (!keep) tierNote.t = setTimeout(() => { el.hidden = true; }, 9000);
 }
-// Auto mode: watch the time from one drawn frame to the next. A run of slow frames steps the tier down (never back up, so it cannot flip-flop);
-// if even min is very slow, offer the picture version. The result is remembered for this tab (sessionStorage), so a reload starts on it.
 const FT = []; let liteOffered = false;
 function tierWatch(gapMs, now) {
-  if (tierMode !== 'auto' || now < tierHold || EMB()) { FT.length = 0; return; }   // embed: never changes the quality by itself
+  if (tierMode !== 'auto' || now < tierHold || EMB()) { FT.length = 0; return; }
   FT.push(gapMs); if (FT.length < 2) return;
-  const med = FT.slice().sort((a, b) => a - b)[FT.length >> 1], crawl = FT.slice(-2).every(g => g > 400);   // crawl: two frames in a row slower than 0.4 s, no need to wait for 24
+  const med = FT.slice().sort((a, b) => a - b)[FT.length >> 1], crawl = FT.slice(-2).every(g => g > 400);
   if (FT.length < 24 && !crawl) return;
   FT.length = 0;
-  if (med <= 40 && !crawl) return;                  // 40 ms = 25 frames a second: fine
-  const next = TIER === 'min' ? null : crawl || TIER === 'light' ? 'min' : 'light';   // crawling goes straight to min: light keeps the 110,000 boxes
-  if (next) { try { sessionStorage.setItem('k8tierAuto', next); } catch { /* not kept */ }
+  if (med <= 40 && !crawl) return;
+  const next = TIER === 'min' ? null : crawl || TIER === 'light' ? 'min' : 'light';
+  if (next) { try { sessionStorage.setItem('k8tierAuto', next); } catch {  }
     setTier(next, `The 3D view was slow on this computer (about ${Math.round(med)} ms a frame), so graphics quality is now <b>${next === 'min' ? 'minimal' : 'light'}</b>. The data shown is the same; only how it is drawn changes. Change it under View options (⋯).`); }
   else if ((med > 250 || crawl) && !liteOffered) { liteOffered = true; const u = new URL(location.href); u.searchParams.set('lite', '1');
     tierNote(`The 3D view is still slow on this computer at minimal quality (about ${Math.round(med)} ms a frame). <a href="${u.href}" style="color:var(--blue)">Open the picture version</a>: the same steps and text, with one picture per step.`, true); }
@@ -1959,117 +1775,102 @@ speed.addEventListener('input', () => { speedTouched = true; });
 { const lab = document.createElement('label'); lab.innerHTML = 'Graphics <select id="tierSel" aria-label="Graphics quality"><option value="auto">Auto</option><option value="full">Full</option><option value="light">Light</option><option value="min">Minimal</option></select><span class="val" id="tierNow"></span>';
   speed.closest('label').after(lab); const sel = lab.querySelector('select'); sel.value = tierMode === 'auto' ? 'auto' : BOOT.tier;
   sel.onchange = () => { tierMode = sel.value === 'auto' ? 'auto' : 'manual';
-    try { if (tierMode === 'auto') { localStorage.removeItem('k8tier'); sessionStorage.removeItem('k8tierAuto'); } else localStorage.setItem('k8tier', sel.value); } catch { /* not kept */ }
-    setTier(tierMode === 'auto' ? (BOOT.phone ? 'light' : 'full') : sel.value); }; }   // viz-phone: Auto starts a phone on light
+    try { if (tierMode === 'auto') { localStorage.removeItem('k8tier'); sessionStorage.removeItem('k8tierAuto'); } else localStorage.setItem('k8tier', sel.value); } catch {  }
+    setTier(tierMode === 'auto' ? (BOOT.phone ? 'light' : 'full') : sel.value); }; }
 setTier(BOOT.tier);
 
-// ================================================================ loop
-// round 9 (compat 8, 9): one resize routine: pixel ratio re-read (capped 1.5), sizes, projection; an active guide shot is reframed for the new viewport
-function onResize() { const { width: VW, height: VH } = viewport();   // the window, or the story's panel while embedded
+function onResize() { const { width: VW, height: VH } = viewport();
   requestRender(); camera.aspect = VW / VH; cardOffset(card.classList.contains('show')); camera.updateProjectionMatrix(); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, dprCap())); renderer.setSize(VW, VH); labelR.setSize(VW, VH); 
-  if (GUIDE.on() && GUIDE.reframe) GUIDE.reframe(); else if (atHome && !FLY.on && !WEAR.on) goHome(!(EMB() && camTween)); }   // ticket 06b: embedded, a resize during the pull-out re-aims the flight instead of cutting it
+  if (GUIDE.on() && GUIDE.reframe) GUIDE.reframe(); else if (atHome && !FLY.on && !WEAR.on) goHome(!(EMB() && camTween)); else if (atStep && !EMB() && !FLY.on && !WEAR.on) refitStep(); }
 addEventListener('resize', onResize);
 (function watchDpr() { const mq = matchMedia(`(resolution: ${devicePixelRatio || 1}dppx)`); const f = () => { mq.removeEventListener('change', f); onResize(); watchDpr(); }; mq.addEventListener('change', f); })();
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { requestRender(); if (GUIDE.on() && GUIDE.reframe) GUIDE.reframe(); });   // compat 12: once the fonts are in
-document.addEventListener('visibilitychange', () => { if (document.hidden && !EMB()) setPlay(false); });   // embed: the story owns play / pause; a hidden tab blocks the loop anyway
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { requestRender(); if (GUIDE.on() && GUIDE.reframe) GUIDE.reframe(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && !EMB()) setPlay(false); });
 const _wp = new THREE.Vector3(); let last = performance.now();
-// any UI input (buttons, toggles, sliders, keys, labels, the inset) asks for one more frame; a cheap catch-all on top of the explicit calls
-// embed: these catch-all listeners do nothing (the story's own scrolling and clicks must not wake the 3D view; the story drives it through K8Viewer)
 const wakeAny = () => { if (!EMB()) requestRender(); };
 for (const ev of ['pointerdown', 'pointerup', 'click', 'keydown', 'input', 'change', 'wheel']) addEventListener(ev, wakeAny, { capture: true, passive: true });
-// something that changes the 3D picture every frame. The glow only pulses without reduced motion (then it is static, so it does not count).
-const animating = () => !!camTween || CMPS.anim ||   // round 6: playback no longer counts; each new sample is one update() → one frame
-   PULSES.length > 0 || !!CALL || !!GROW || !!SWAP || ((HLM.length > 0 || GLM.length > 0) && !reduce && TP.glow);   // P1: below the full tier the glow is steady
+const animating = () => !!camTween || CMPS.anim ||
+   PULSES.length > 0 || !!CALL || !!GROW || !!SWAP || ((HLM.length > 0 || GLM.length > 0) && !reduce && TP.glow);
 const RSTAT = { total: 0, perSec: 0, n: 0, t: performance.now() }, RLOG = /[?&]renderlog\b/.test(location.search);
-// P1 (viz-perf): the loop is switched off, not just idle, when there is nothing to do: the tab is hidden, the Data side is open, or the model
-// has been still for 1.5 s (paused, no animation, no tour, no fly / wear / compression mode). requestRender() and any pointer movement switch it on again.
 let loopOn = false, quietT = 0;
-const loopBlocked = () => document.hidden || document.body.dataset.side === 'data' || (!!EMB() && !EMB_ACTIVE);   // embed: asleep (setActive(false)) blocks the loop itself, so nothing can draw
-// (Driven by requestAnimationFrame directly: three's setAnimationLoop(null), called from inside its own callback, still asks for one more frame each time.)
+const loopBlocked = () => document.hidden || document.body.dataset.side === 'data' || (!!EMB() && !EMB_ACTIVE);
 let loopRaf = 0;
 const loopSleep = () => { loopOn = false; cancelAnimationFrame(loopRaf); };
 const loopFrame = now => { if (!loopOn) return; loopRaf = requestAnimationFrame(loopFrame); loopTick(now); };
 wakeLoop = () => { if (loopOn || loopBlocked()) return; loopOn = true; prevDrew = false; last = quietT = performance.now(); loopRaf = requestAnimationFrame(loopFrame); };
-addEventListener('pointermove', () => { if (!EMB()) wakeLoop(); }, { capture: true, passive: true });   // embed: inert (see wakeAny)
+addEventListener('pointermove', () => { if (!EMB()) wakeLoop(); }, { capture: true, passive: true });
 controls.addEventListener('change', requestRender);
 document.addEventListener('visibilitychange', () => { if (document.hidden) loopSleep(); else requestRender(); });
 addEventListener('k8:side', () => { if (loopBlocked()) loopSleep(); else { onResize(); requestRender(); } });
 let prevDrew = false, burst = -1;
 const loopTick = now => {
-  if (prevDrew) { tierWatch(now - last, now); embedRateWatch(now - last); }   // P1: the time from the last drawn frame to this one feeds the auto tier (and, embedded, the playback speed)
+  if (prevDrew) { tierWatch(now - last, now); embedRateWatch(now - last); }
   prevDrew = false;
-  if (burst < 0 && D) { const ld = document.getElementById('k8load'); if (ld) ld.remove(); }   // P1: the first trace is in: the loading note goes
-  if (burst < 0 && D) burst = tierMode === 'auto' && !EMB() ? 30 : 0;   // P1: 30 frames in a row once the first trace is in, so the auto tier has a measurement shortly after load
+  if (burst < 0 && D) { const ld = document.getElementById('k8load'); if (ld) ld.remove(); }
+  if (burst < 0 && D) burst = tierMode === 'auto' && !EMB() ? 30 : 0;
   if (burst > 0) { burst--; needsRender = true; }
   const dt = (now - last) / 1000; last = now;
   if (playing || needsRender || animating() || !!EMBT || FLY.on || WEAR.on || CMPS.on || GUIDE.on() || TOUR.isOpen() || (PICK && now - PICK.t0 < 1800)) quietT = now; else if (now - quietT > 1500) return loopSleep();
-  const wasAnim = animating();                     // sampled first: the frame an animation ends still draws its end state
+  const wasAnim = animating();
   if (playing && D) { acc += dt * rate(); if (acc >= 1) { const n = Math.floor(acc); acc -= n; idx = idx + n >= D.frames.length ? D.firstShown : idx + n; update(); } }
   if (camTween) stepTween(now);
   stepPulses(now); stepCall(now); stepSwap(now); stepGrow(now); stepGaze(dt);
-  if (EMBT && now >= EMBT.at) { const f = EMBT.fn; EMBT = null; f(now); }   // ticket 06b: an embedded step's timed animation (always null when not embedded)
+  if (EMBT && now >= EMBT.at) { const f = EMBT.fn; EMBT = null; f(now); }
   const hs = build === 0 && !solo; if (HS0.visible !== hs) { HS0.visible = hs; requestRender(); }
-  if (PICK && !reduce && now - PICK.t0 < 1800 && U.btab === 'ch') drawInset();   // the running-sum counter fills in tap by tap (DOM only)
+  if (PICK && !reduce && now - PICK.t0 < 1800 && U.btab === 'ch') drawInset();
   if (FLY.on) flyStep(dt); if (WEAR.on) wearStep(dt); if (CMPS.on) cmpStep(dt);
-  if (!FLY.on && !WEAR.on && controls.update()) requestRender();   // true while damping is still moving the camera (fly / wear own the camera)
-  if (needsRender || wasAnim || animating()) {                // idle: skip both the WebGL and the label pass
-    if (!TP.haze) { const on = document.getElementById('tLines').checked; BL.forEach((B, b) => {   // P1: below full, a block's mixing-line haze shows only while that block is the one being looked at
+  if (!FLY.on && !WEAR.on && controls.update()) requestRender();
+  if (needsRender || wasAnim || animating()) {
+    if (!TP.haze) { const on = document.getElementById('tLines').checked; BL.forEach((B, b) => {
       B.selfLines.visible = B.crossLines.visible = on && (focused === 'blk' + b || (build >= 0 && STEPS[build] === 'blk' + b) || (!!GMIX && GMIX.b === b)); }); }
-    if (D && anyStale()) update();                 // round 6: a shown output still carries an older sample: paint it first
+    if (D && anyStale()) update();
     if (TP.sheets) syncSheets();
     needsRender = false; prevDrew = true;
-    const gl = reduce || !TP.glow ? .32 : .26 + .14 * Math.sin(now / 240); HLM.forEach(m => { m.material.opacity = gl; }); GLM.forEach(m => { m.material.opacity = gl * (m.userData.k || 1); });   // picked / hovered glow
-    for (const L of allLabels) { if (L.o.userData.gHide || L.o.userData.soloHide || labelClipped(L)) { L.o.visible = false; continue; }   // hidden for a guide shot / clipped away
+    const gl = reduce || !TP.glow ? .32 : .26 + .14 * Math.sin(now / 240); HLM.forEach(m => { m.material.opacity = gl; }); GLM.forEach(m => { m.material.opacity = gl * (m.userData.k || 1); });
+    for (const L of allLabels) { if (L.o.userData.gHide || L.o.userData.soloHide || labelClipped(L)) { L.o.visible = false; continue; }
       const vis = L.grp.visible !== false && (!solo || L.grp === GROUPS[solo] || L.grp === CL);
       if (L.cond) L.o.visible = vis && !!L.cond();
       else if (L.tap) L.o.visible = vis && build >= 0 && focused && GROUPS[focused] === L.grp;
       else if (L.layer) L.o.visible = vis && /^(proj|blk\d)$/.test(focused || '');
       else if (L.small && stepHas(L.grp)) L.o.visible = vis;
-      else if (L.small && !TP.small) L.o.visible = false;   // P1: min tier: small labels only on the current step
+      else if (L.small && !TP.small) L.o.visible = false;
       else if (L.small) { L.o.getWorldPosition(_wp); L.o.visible = vis && _wp.distanceTo(camera.position) < 9; } else L.o.visible = vis; }
     renderer.render(scene, camera); labelR.render(scene, camera); RSTAT.total++; RSTAT.n++; tourDirty = true;
-    if (!readyDone && D) { readyDone = true; readyOk(); }   // K8Viewer.ready: the first trace is on screen
+    if (!readyDone && D) { readyDone = true; readyOk(); }
   }
   if (now - RSTAT.t >= 1000) { RSTAT.perSec = Math.round(RSTAT.n * 1000 / (now - RSTAT.t)); RSTAT.n = 0; RSTAT.t = now; if (RLOG) console.log(`[k8] renders/s ${RSTAT.perSec} (total ${RSTAT.total})`); }
-  GUIDE.tick(now);                                 // DOM only: shows the shot's bubble once its flight lands, runs auto-play
-  if (tourDirty || TOUR.settling() || now - tourT > 250) { TOUR.frame(); tourDirty = false; tourT = now; occludeLabels(); }   // DOM only; after a render or at 4 Hz when idle
+  GUIDE.tick(now);
+  if (tourDirty || TOUR.settling() || now - tourT > 250) { TOUR.frame(); tourDirty = false; tourT = now; occludeLabels(); }
 };
 wakeLoop();
-// round 5: a label that would sit under the card, the inset, the gaze key, the guide HUD or the tip bubble is hidden (visibility only)
 function occludeLabels() {
-  const rs = ['card', 'side', 'tour', 'guideHud', 'tourEdge', 'menu', ...(window.K8Phone && window.K8Phone.form() ? ['brand', 'sheetTabs'] : [])].map(   // viz-phone: on a small screen also the brand line (name, Data | Model tabs) and the sheet's tab strip
+  const rs = ['card', 'side', 'tour', 'guideHud', 'tourEdge', 'menu', ...(window.K8Phone && window.K8Phone.form() ? ['brand', 'sheetTabs'] : [])].map(
 id => document.getElementById(id)).filter(e => e && !e.hidden && e.getClientRects().length).map(e => e.getBoundingClientRect()).filter(r => r.width);
   for (const L of allLabels) { const el = L.o.element; if (!L.o.visible || el.style.display === 'none') { if (el.classList.contains('occl')) el.classList.remove('occl'); continue; }
     const r = el.getBoundingClientRect(), hit = rs.some(R => r.right > R.left && r.left < R.right && r.bottom > R.top && r.top < R.bottom);
     if (hit !== el.classList.contains('occl')) el.classList.toggle('occl', hit); L.r = hit ? null : r; }
-  // viz-look P1: no label may sit on another. Kept in this order: the current step's name, its small labels, then the other stages'
-  // names; a label whose box overlaps one already kept is hidden (class clash), and comes back as soon as the camera makes room.
   const kept = [], rank = L => L.other ? 0 : L.small ? 1 : 3;
   for (const L of allLabels.filter(L => L.o.visible && L.r && L.r.width && !L.o.element.classList.contains('far')).sort((a, b) => rank(b) - rank(a))) {
     const r = L.r, hit = kept.some(R => r.right > R.left - 6 && r.left < R.right + 6 && r.bottom > R.top - 2 && r.top < R.bottom + 2);
-    const pill = rank(L) === 3 && !(window.K8Phone && window.K8Phone.form());   // the clickable stage names of the whole-model view never hide each other (viz-phone: on a small screen they do, and the sheet lists every stage)
+    const pill = rank(L) === 3 && !(window.K8Phone && window.K8Phone.form());
     if ((hit && !pill) !== L.o.element.classList.contains('clash')) L.o.element.classList.toggle('clash', hit && !pill); if (!hit || pill) kept.push(r); }
   for (const L of allLabels) if (!(L.o.visible && L.r) && L.o.element.classList.contains('clash')) L.o.element.classList.remove('clash');
 }
-// round 6: a colour fingerprint for exactness checks (console: __k8.fingerprint(600)): pauses on frame i and hashes every visible
-// instance-colour and vertex-colour buffer (FNV-1a over the Float32 bits), in scene order
 function fingerprint(i) {
-  setPlay(false); if (D && i !== null) { idx = Math.max(D.firstShown, Math.min(D.frames.length - 1, i)); update(); }   // null: hash as shown, no update
+  setPlay(false); if (D && i !== null) { idx = Math.max(D.firstShown, Math.min(D.frames.length - 1, i)); update(); }
   const out = []; let n = 0;
   scene.traverseVisible(o => { const a = o.isInstancedMesh && o.instanceColor ? o.instanceColor.array : (o.isLineSegments || o.isLine) && o.geometry.attributes.color ? o.geometry.attributes.color.array : null;
     if (!a) return; const u = new Uint32Array(a.buffer, a.byteOffset, a.length); let h = 2166136261; for (let k = 0; k < u.length; k++) { h ^= u[k]; h = Math.imul(h, 16777619) >>> 0; }
     out.push(`${n++}:${a.length}:${h.toString(16)}`); });
   return out.join(' ');
 }
-const insetCheck = () => { const t = document.createElement('template'); t.innerHTML = insetHTML; return t.innerHTML === insetEl.innerHTML.replace(/ class="gHL"/g, ''); };   // round 6: the patched inset equals a fresh parse
+const insetCheck = () => { const t = document.createElement('template'); t.innerHTML = insetHTML; return t.innerHTML === insetEl.innerHTML.replace(/ class="gHL"/g, ''); };
 window.__k8 = { homeView, camera, controls, GROUPS, select, tourCheck, guideCheck, fingerprint, insetCheck, idx: () => idx, showBuild: i => showBuild(i), guide: GUIDE, renderStats: () => ({ total: RSTAT.total, perSec: RSTAT.perSec, idle: !needsRender && !animating(), asleep: !loopOn }),
-  headQuat: () => [headM.quaternion.x, headM.quaternion.y, headM.quaternion.z, headM.quaternion.w] };   // ticket 06a: the headset's rotation in three.js space
+  headQuat: () => [headM.quaternion.x, headM.quaternion.y, headM.quaternion.z, headM.quaternion.w] };
 
-// ================================================================ ticket 06a: the API the story calls (spec/CONTRACTS.md section 6). It is the only way in.
-// View keys are the step keys (input, feat, proj, …, gaze) plus 'whole' = the whole-model view.
 function showStep(view, force = false) {
-  if (!force && view === step()) return;                       // asked again for the step on screen: nothing to redo (showBuild would restart its flight and animations)
-  if (EMB()) embedLeave();                                     // ticket 06b: the previous step's timed animation and the arrival offset end here
+  if (!force && view === step()) return;
+  if (EMB()) embedLeave();
   if (view === 'whole') return home();
   const i = STEPS.indexOf(view); if (i < 0) throw new Error(`K8Viewer.showStep: unknown view "${view}"`);
   showBuild(i);
@@ -2078,84 +1879,55 @@ function showStep(view, force = false) {
 
 function step() { return build < 0 ? 'whole' : STEPS[build]; }
 
-// ---- ticket 07: entering the viewer from the story, with no page load (SPEC C6, C7; CONTRACTS 6). The story side (model_panel.js)
-// first sends its stages far, frees deck 1's WebGL context, suspends the deck script and takes back the borrowed inset; then it calls
-// this. Everything here is the viewer taking over the page with the scene the reader is already looking at:
-//   - K8_EMBED is cleared, so every EMB() switch above (keys, tour, tier watch, tips, spoken status, card offset, framing, speed)
-//     takes the viewer's own path again from the next call on: they all read the global at call time;
-//   - the canvas and the label layer move back to #scene and their place in <body> (placeDom). Moving a canvas element in the DOM
-//     keeps its WebGL context and everything uploaded to it, so the renderer is not made again and nothing is rebuilt;
-//   - the scene gets its own background, fog colour and floor grid back. The context was made with alpha (transparent) and that
-//     cannot change, but an opaque scene background covers every pixel, so it looks exactly like the viewer's opaque canvas;
-//   - story mode is switched off (html.story removed: the viewer's panels show again and the page stops scrolling);
-//   - the History API adds ?explore=1 as a new entry without loading anything (pushState only changes the address), and the
-//     browser's Back (popstate) then loads the story at its last step (toStory). Leaving is a page load on purpose (SPEC C7);
-//   - button#storyBack ("Back to the story") becomes the first control of the toolbar and takes the focus.
-// A plain ?explore=1 load never comes here (K8_EMBED was never set), so it has no #storyBack and no popstate handler.
-const STORY_RETURN = 'k8StoryReturn';                // sessionStorage marker: model_panel.js puts the focus back on #exploreBtn after the load
+const STORY_RETURN = 'k8StoryReturn';
 let entered = false;
 function enter() {
   if (entered || !EMB()) return false;
   entered = true;
   embedLeave(); EMB_ACTIVE = true; window.K8_EMBED = null;
   scene.background = new THREE.Color('#000'); renderer.setClearColor(0x000000, 1); scene.fog.color.set('#000'); floor.layers.set(0);
-  placeDom();                                        // canvas → #scene, labels → home; tab stop, pointer input and orbiting on again
+  placeDom();
   document.documentElement.classList.remove('story');
-  window.scrollTo({ left: 0, top: 0, behavior: 'instant' });   // the story's scroll position means nothing to a page that cannot scroll
-  tierHold = performance.now() + 2000;               // the frames right after the switch are slow once (resize); the auto tier ignores them
+  if (window.K8Phone) window.K8Phone.apply();
+  window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+  tierHold = performance.now() + 2000;
   const p0 = camera.position.clone(), t0 = controls.target.clone();
-  onResize();                                        // the window is the viewport now: buffer, aspect, labels, card offset
-  // The step the reader was on, with the viewer's card, step bar and framing. The camera starts from where the story left it (the
-  // resize above may have re-fitted it at once), so the model flies to its new place instead of jumping there.
+  onResize();
   camera.position.copy(p0); controls.target.copy(t0);
   showStep(step(), true);
-  try { const u = new URL(location.href); u.searchParams.set('explore', '1'); u.hash = ''; history.pushState({ k8: 'entered' }, '', u); } catch { /* file:// */ }
+  try { const u = new URL(location.href); u.searchParams.set('explore', '1'); u.hash = ''; history.pushState({ k8: 'entered' }, '', u); } catch {  }
   addEventListener('popstate', toStory);
   const row = barEl.querySelector('.row') || barEl, grp = document.createElement('div');
   grp.className = 'grp g-story';
-  // Below 1360 px the toolbar's tool buttons already drop their words for icons (index.html); the Back button does the same, so the
-  // bar still fits (its name stays "Back to the story" through aria-label). Added only here, so a plain ?explore=1 load is unchanged.
   const css = document.createElement('style');
   css.textContent = '@media (max-width: 1359px) { #bar .g-story .bl { display:none; } #bar .g-story button { width:var(--tap); padding:0; justify-content:center; } }';
   document.head.appendChild(css);
   grp.innerHTML = '<button id="storyBack" type="button" aria-label="Back to the story" data-tip="Back to the story, where you left it"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg><span class="bl">Back to the story</span></button>';
   row.prepend(grp);
-  // The button goes back one entry (to the story's own address); popstate then does the load. So the button and the browser's Back
-  // behave the same and the history has no extra story entry.
   grp.firstChild.addEventListener('click', () => history.back());
   grp.firstChild.focus();
   say('The 3D model. Back to the story is the first control of the toolbar.');
   requestRender();
   return true;
 }
-// Back to the story, by a page load. After popstate the address is already the story's, so replacing only its fragment would not load
-// anything (a fragment change stays in the page): the address is set to #s-explore with replaceState and the page is reloaded.
-// popstate also fires for a fragment link inside the viewer (the skip link's #next) and for Back over such an entry; those keep ?explore=1
-// in the address, while a real Back to the story has already removed it. So while explore=1 is still there, this is not a way back.
 function toStory() {
   if (new URLSearchParams(location.search).get('explore') === '1') return;
-  try { sessionStorage.setItem(STORY_RETURN, '1'); } catch { /* the focus simply is not restored */ }
+  try { sessionStorage.setItem(STORY_RETURN, '1'); } catch {  }
   const u = new URL(location.href); u.searchParams.delete('explore'); u.searchParams.delete('side'); u.hash = 's-explore';
-  // A reload normally puts the page back at its old scroll position after loading, which would undo the story's own jump to #s-explore;
-  // scrollRestoration 'manual' tells the browser not to, for this history entry.
   history.replaceState(null, '', u); history.scrollRestoration = 'manual'; location.reload();
 }
 
 window.K8Viewer = {
-  ready: READY,                                      // resolves when the first trace has been drawn; rejects if the trace or the 3D could not start
+  ready: READY,
   showStep: view => showStep(view), step,
-  setActive(on) { EMB_ACTIVE = !!on; if (loopBlocked()) loopSleep(); else requestRender(); },   // asleep = the loop is blocked: nothing is drawn
+  setActive(on) { EMB_ACTIVE = !!on; if (loopBlocked()) loopSleep(); else requestRender(); },
   setPlaying(on) { setPlay(!!on); requestRender(); },
   playing: () => playing,
-  speed: () => rate(),                               // samples per second actually used (embedded: 100, or the fastest setting if frames could not keep up)
+  speed: () => rate(),
   sample: () => idx,
   resize: () => onResize(),
-  // review Q7, embedded only: re-aim after the story changed K8_EMBED.lens. onResize without the resize: the drawing buffer, the
-  // labels' size and the aspect stay; the view offset is set again and the whole-model view (if that is what is on screen) re-fitted.
   reframe() { if (!EMB()) return; cardOffset(false); if (GUIDE.on() && GUIDE.reframe) GUIDE.reframe(); else if (atHome && !FLY.on && !WEAR.on) goHome(!camTween); requestRender(); },
-  enter: () => enter(),                             // ticket 07: the embed becomes the full viewer, no page load; false if not embedded
-  // ticket 06b: the viewer's inset element (the curve graphs), for the story to place in its text column on head and traj; the step's
-  // formula lines from the expert texts (expert.js), as plain strings; the arrival of the input strip (lead 1 → 0, see arrive()).
+  enter: () => enter(),
   inset: () => insetEl,
   math: view => (((window.EXPERT || {})[view] || {}).math || []).slice(),
   arrive: lead => arrive(lead),
