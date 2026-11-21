@@ -43,7 +43,7 @@
   const readMs = (text, speed = 1) => Math.max(6000, 2000 + text.length * 60) / speed;
 
   const CSS = `
-#guideHud { position:fixed; top:52px; left:50%; transform:translateX(-50%); z-index:31; display:flex; align-items:center; gap:10px; padding:6px 8px 8px 12px;   /* theme: 2 px tighter, so Geist's wider type keeps the bar as wide as before */
+#guideHud { position:fixed; top:52px; left:50%; transform:translateX(-50%); z-index:31; display:flex; align-items:center; gap:10px; padding:6px 8px 8px 12px;
  
   background:var(--panel-solid, rgba(10,10,10,.95)); border:1px solid var(--line, #2c2c2c); border-radius:var(--r-lg, 10px); font:500 13px var(--sans, system-ui, sans-serif); color:var(--body, #a6a6a6); overflow:hidden; max-width:calc(100% - 32px); }
 #guideHud[hidden] { display:none; }
@@ -54,7 +54,7 @@
 #guideHud .gsv { font:400 12px var(--mono, ui-monospace, monospace); font-variant-numeric:tabular-nums; color:var(--fg, #eaeaea); min-width:38px; }
 #guideHud .gr { background:transparent; border-color:#f0b24a; color:#ffe2a6; }
 #guideHud .gb { position:absolute; left:0; bottom:0; height:2px; background:#6fa8ff; transition:width .3s ease; }
-#guideBtn[aria-pressed="true"] { background:var(--on, #1c1c1c); border-color:#9b8cff; }   /* round 8: violet only while the tour is on (theme: as an outline, not a fill) */
+#guideBtn[aria-pressed="true"] { background:var(--on, #1c1c1c); border-color:#9b8cff; }
 .gHL { outline:2px solid #f0b24a !important; outline-offset:2px; border-radius:var(--r-md, 6px); }
 @media (prefers-reduced-motion: reduce) { #guideHud .gb { transition:none; } }
 @media (max-width: 700px) { #guideHud .gt { display:none; } }`;

@@ -267,7 +267,6 @@ const A_CSS = `
 #mvA .circ:hover { background: #f1f0ea; color: #010101; }
 #mvA .note { position: absolute; left: 40px; bottom: 74px; font-size: 10.5px; color: #6c6e6b; }
 #mvA .st .hit2, #mvA .prule, #mvA .phint, #mvA .morebtn, #mvA .row .n i { display: none; }
-/* phone portrait (21 Nov 2026): the journey's layout. A frosted text block over the top --ph shows one stage; the die sits below it. */
 html.phone #mvA .stage { top: var(--ph); width: 100%; height: calc(100% - var(--ph) - 116px); }
 html.phone #mvA .die { width: min(94vw, calc((100vh - var(--ph) - 136px) * 1.3)); }
 html.phone #mvA .st .hit2 { display: inline; fill: transparent; }
@@ -497,7 +496,6 @@ const B_CSS = `
 #mvB .tick { position: absolute; left: 0; right: 0; bottom: 0; height: 36px; border-top: 1px solid #2f3234; overflow: hidden; font: 11.5px/36px GeistMono; letter-spacing: .05em; color: #6c6e6b; white-space: nowrap; padding-left: 40px; }
 #mvB .tick b { color: #f1f0ea; font-weight: 400; }
 #mvB .pause { bottom: 54px; }
-/* its own row, above SEE IT PREDICT; the flow above it gives up that height. Its button replaces the view's PAUSE button (space still works). */
 #mvB .scrub { position: absolute; left: 40px; right: 40px; bottom: 112px; display: flex; align-items: center; gap: 14px; }
 #mvB .vp { bottom: 160px; }
 #mvB > .pause { display: none; }
@@ -511,13 +509,12 @@ const B_CSS = `
 #mvB .scrub input::-moz-range-thumb { width: 4px; height: 18px; background: #dff140; border: 0; border-radius: 0; }
 #mvB .scrub input:focus-visible { outline: 2px solid #dff140; outline-offset: 2px; }
 #mvB .scrub .stime { font: 11.5px GeistMono; letter-spacing: .05em; color: #b0b0a9; min-width: 128px; text-align: right; font-variant-numeric: tabular-nums; }
-/* phone portrait (21 Nov 2026): the detail panel is a bottom sheet; zoomed, the flow uses the space between the header and the sheet */
 html.phone #mvB .bar { left: 16px; right: 16px; top: 64px; gap: 4px 14px; font-size: 10px; }
 html.phone #mvB h1 { left: 16px; right: 16px; top: 122px; font-size: 26px; }
 html.phone #mvB h1 small { font-size: 13px; }
 html.phone #mvB .vp { left: 16px; right: 16px; top: 286px; bottom: 166px; }
 html.phone #mvB.zoomed .vp { top: 122px; }
-html.phone #mvB .detail { z-index: 2; left: 0; right: 0; top: auto; width: auto; height: 50%; padding: 18px 16px 76px; border-left: 0; border-top: 1px solid #2f3234; transform: translateY(100%); }
+html.phone #mvB .detail { z-index: 2; left: 0; right: 0; top: auto; bottom: calc(66px + env(safe-area-inset-bottom)); width: auto; height: calc(50% - 50px); padding: 18px 16px 24px; border-left: 0; border-top: 1px solid #2f3234; transform: translateY(calc(100% + 66px + env(safe-area-inset-bottom))); }
 html.phone #mvB.zoomed .detail { transform: none; }
 html.phone #mvB .detail .x { top: 10px; right: 12px; width: 44px; height: 44px; }
 html.phone #mvB .detail h2 { font-size: 24px; margin-right: 56px; } html.phone #mvB .detail p { font-size: 15px; }
@@ -538,7 +535,7 @@ export function makeB(ctx) {
       if (scrubBtn) { scrubBtn.textContent = p ? '❚❚' : '▶'; scrubBtn.setAttribute('aria-label', p ? 'Pause' : 'Play'); }
     },
     build() {
-      layer.innerHTML = `<div class="bar mono"><span class="live">LIVE · QUARTER SPEED</span><span>SAMPLE <b data-h="t"></b></span><span>T <b data-h="time"></b></span><span class="sp"></span><span>44,196 BYTES</span><span>≈78 µS / CALL ON A PC</span></div>
+      layer.innerHTML = `<div class="bar mono"><span class="live">LIVE · QUARTER SPEED</span><span>SAMPLE <b data-h="t"></b></span><span>T <b data-h="time"></b></span><span class="sp"></span><span>44,196 BYTES</span><span>≈78 <span style="text-transform:none">µs</span> / CALL ON A PC</span></div>
         <h1>One prediction, every 10 ms.<small>The newest head orientation comes in on the left. Seven stages later, 20 future poses come out on the right. Click a stage.</small></h1>
         <div class="vp"><div class="flow"><svg class="wires"></svg></div></div>
         <aside class="detail" aria-live="polite"><button class="x" type="button" aria-label="Close">✕</button><div class="k"></div><h2></h2><p></p><div class="wg"></div></aside>
@@ -568,7 +565,7 @@ export function makeB(ctx) {
     },
     select(k) {
       sel = k; const flow = layer.querySelector('.flow'), vp = layer.querySelector('.vp'); if (!flow) return;
-      layer.classList.toggle('zoomed', !!k); layer.querySelector('h1').style.opacity = k ? .15 : 1;
+      layer.classList.toggle('zoomed', !!k); layer.querySelector('h1').style.opacity = k ? (isPhone() ? 0 : .15) : 1;
       const W = vp.clientWidth, H = vp.clientHeight; fit = Math.min(1, W / 1360, H / 470);
       layer.querySelectorAll('.node').forEach(n => n.classList.toggle('on', n.dataset.k === k));
       if (!k) { flow.style.transform = `translate(${((W - 1360 * fit) / 2).toFixed(0)}px, 0) scale(${fit})`; detailLive = null; ctx.setZoomed(false); return; }
