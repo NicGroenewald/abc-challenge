@@ -1,0 +1,43 @@
+# Publishes visualization/ as the team's site, https://motion-pending.github.io/ (this repo is named
+# motion-pending.github.io, so GitHub serves it at the organisation's root address).
+# Runs on every push to main that changes the site, or by hand from the Actions tab.
+name: Publish site
+
+on:
+  push:
+    branches: [main]
+    paths: ["visualization/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # Two jobs, as in GitHub's own Pages starter workflow: deploying in the same job straight after the upload sometimes
+  # failed with "No artifacts named github-pages were found" (the upload was not listed yet).
+  # Only the team repo publishes; personal copies (forks) of it skip both jobs instead of failing.
+  build:
+    if: github.repository == 'Motion-Pending/motion-pending.github.io'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: visualization
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

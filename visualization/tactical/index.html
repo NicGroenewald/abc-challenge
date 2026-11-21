@@ -275,7 +275,7 @@
 <link rel="stylesheet" href="phone.css?r=t1">
 <link rel="stylesheet" href="story.css?r=f2">
 <link rel="stylesheet" href="hero.css?r=h2">
-<link rel="stylesheet" href="tactical.css?r=org1">   <!-- 16 Nov 2026: the Anduril-style theme over story.css, and the TAKE CONTROL section -->
+<link rel="stylesheet" href="tactical.css?r=sub1">   <!-- 16 Nov 2026: the Anduril-style theme over story.css, and the TAKE CONTROL section -->
 <script>
 // P1 (viz-perf): the boot decision, written in old-style JavaScript (ES5) on purpose, so browsers too old for the 3D view still run it.
 // It chooses between the live 3D view and the picture version ("lite": lite.js, one picture per step, no WebGL), and the starting quality tier.
@@ -356,10 +356,10 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
      Every number below is copied from a file in the repo; the source is named in a comment beside it. Text marked .st-draft is for the team to write. -->
 <main id="story">
   <header class="st-top">
-    <a class="st-name" href="#s-hook"><b>Motion Pending</b><span class="st-sub"> · Head-pose forecasting · ABC 2027</span></a>
+    <a class="st-name" href="#s-hook"><b>Motion Pending</b><span class="st-sub"> · Head-pose forecasting · 9th ABC Challenge</span></a>
     <nav aria-label="Chapters">
       <a href="#s-challenge">Prediction</a><a href="#s-data">Data</a><a href="#s-model">Model</a><a href="#s-results">Results</a><a href="#s-paper">Paper</a>
-      <a class="st-gh" href="https://github.com/Motion-Pending/abc-challenge" target="_blank" rel="noopener" aria-label="The team repo on GitHub (opens in a new tab)" title="Motion-Pending/abc-challenge on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+      <a class="st-gh" href="https://github.com/Motion-Pending/motion-pending.github.io" target="_blank" rel="noopener" aria-label="The team repo on GitHub (opens in a new tab)" title="Motion-Pending/motion-pending.github.io on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
       <a class="st-cta" href="#s-model">Take control</a>
     </nav>
   </header>
@@ -777,7 +777,7 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
       <dt>Replay data</dt><dd>The hero clip and the model's main replay use head motion from <a href="https://researchdata.cab.unipd.it/1239/">QuestSet</a> (Baldoni et al., 2024), licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Modified: head rotation only, converted to the model's frame and resampled to 100&nbsp;Hz. The model was not trained on it.</dd>
       <!-- Team: the paper's author block (main.tex \author, \thanks), names only; "supervisors" from UPDATE_BRIEF.md decision 1 -->
       <dt>Team</dt><dd>Motion Pending: Jacob Dorrill, Nicholas Groenewald, Ray Crowley and Duncan O'Regan. Supervisors: Ruairi O'Reilly and JingHua Ye. Computer Science Department, Munster Technological University, Cork, Republic of Ireland. Jacob and Nicholas worked on the model side (model architecture, compression and latency); Ray and Duncan on the data side (data preparation and the pipeline).</dd>
-      <dt>Code</dt><dd>The model, the benchmark and this site are on GitHub at <a href="https://github.com/Motion-Pending/abc-challenge">Motion-Pending/abc-challenge</a>. Personal copies: <a href="https://github.com/JacobDrizzle/abc-challenge">Jacob Dorrill</a> and <a href="https://github.com/NicGroenewald/abc-challenge">Nicholas Groenewald</a>.</dd>
+      <dt>Code</dt><dd>The model, the benchmark and this site are on GitHub at <a href="https://github.com/Motion-Pending/motion-pending.github.io">Motion-Pending/motion-pending.github.io</a>. Personal copies: <a href="https://github.com/JacobDrizzle/abc-challenge">Jacob Dorrill</a> and <a href="https://github.com/NicGroenewald/abc-challenge">Nicholas Groenewald</a>.</dd>
       <!-- 16 Nov 2026: CC BY 4.0 needs title, author, source, licence and a note of changes (models/CREDITS.md) -->
       <dt>Headset model</dt><dd>"<a href="https://sketchfab.com/3d-models/meta-quest-3-65a813833dc04eeeb7d33bdca58c184c">Meta Quest 3</a>" by <a href="https://sketchfab.com/ElinHohler">Elin</a>, licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Modified: logo removed, fitted to the head. Meta Quest is a trademark of Meta; this page is not affiliated with Meta.</dd>
       <dt>Head model</dt><dd>Head mesh from Blender Studio's <a href="https://www.blender.org/download/demo-files/">Human Base Meshes</a> bundle v1.4.1 (CC0), adapted by us.</dd>
