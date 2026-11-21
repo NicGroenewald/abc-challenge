@@ -1,16 +1,3 @@
-// die_texture.js: the picture on the SoC die (journey level 03), drawn in code on a 2D canvas. No image files.
-// (16 Nov 2026, Nic: Apple's die-render style, "maybe idk?")
-//
-// What makes Apple's die renders read as silicon, as techniques (nothing of theirs is copied):
-//   1. very fine light line-art: thousands of small outlined rectangles ("macros"), recursively split inside each block;
-//   2. mirror symmetry inside a unit (a core, a GPU slice), so it looks engineered, not random;
-//   3. regular hatching where the memory (SRAM) is, fine stipple where the logic is, bus channels between blocks;
-//   4. a soft multi-colour wash over the whole die, under the line-art.
-// The blocks are the XR2 Gen 2's as publicly described (6 CPU cores, Adreno GPU, Hexagon NPU, system cache, camera/video/display
-// blocks, LPDDR5 memory interface). Their positions and sizes are ILLUSTRATIVE: no die photo of this chip is public.
-//
-// Two palettes (?die=pastel, the default: Apple-like pastel wash; ?die=tactical: graphite with bone line-art, the page's palette).
-// Die units: the die runs from -5 to 5 in x and z; canvas pixel = ((v + 5) / 10) * S.
 
 export const DIE = {
   cpu:  [-4.55, -4.55, -1.05, -1.25],
@@ -19,39 +6,34 @@ export const DIE = {
   npu:  [0.35, 0.85, 4.55, 4.55],
   misc: [-4.55, 1.85, 0.05, 4.55],
 };
-export const NPU_N = 8, NPU_K8 = [5, 2];                     // 8 x 8 tiles in the NPU; [column, row] of the one that holds k8
-export function npuTile(c, r) {                              // die-unit box of one NPU tile
+export const NPU_N = 8, NPU_K8 = [5, 2];
+export function npuTile(c, r) {
   const [x0, z0, x1, z1] = DIE.npu, g = .06, w = (x1 - x0 - g * (NPU_N + 1)) / NPU_N, h = (z1 - z0 - g * (NPU_N + 1)) / NPU_N;
   const ax = x0 + g + c * (w + g), az = z0 + g + r * (h + g); return [ax, az, ax + w, az + h];
 }
 
 export function dieTexture(THREE, palette = 'pastel', S = 4096) {
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const P = v => (v + 5) / 10 * S, U = S / 10;               // die unit -> pixels
-  // pass 1: the line-art, white on black, on its own canvas ("luminance")
+  const P = v => (v + 5) / 10 * S, U = S / 10;
   const lc = document.createElement('canvas'); lc.width = lc.height = S; const g = lc.getContext('2d');
   g.fillStyle = '#000'; g.fillRect(0, 0, S, S);
   const stroke = (b, a, w = 1.4) => { g.strokeStyle = `rgba(255,255,255,${a})`; g.lineWidth = w; g.strokeRect(P(b[0]), P(b[1]), P(b[2]) - P(b[0]), P(b[3]) - P(b[1])); };
   const fill = (b, a) => { g.fillStyle = `rgba(255,255,255,${a})`; g.fillRect(P(b[0]), P(b[1]), P(b[2]) - P(b[0]), P(b[3]) - P(b[1])); };
-  // SRAM: tight parallel lines with a spine down the middle (the word-line drivers), the "woven" look of memory
   function sram(b, vertical = rnd() < .5) {
     const [x0, z0, x1, z1] = b.map(P); g.fillStyle = 'rgba(255,255,255,.32)';
     if (vertical) { for (let x = x0 + 2; x < x1 - 1; x += 3.2) g.fillRect(x, z0 + 1, 1.1, z1 - z0 - 2); g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect((x0 + x1) / 2 - 2, z0, 4, z1 - z0); }
     else { for (let z = z0 + 2; z < z1 - 1; z += 3.2) g.fillRect(x0 + 1, z, x1 - x0 - 2, 1.1); g.fillStyle = 'rgba(255,255,255,.75)'; g.fillRect(x0, (z0 + z1) / 2 - 2, x1 - x0, 4); }
   }
-  // logic: rows of short dashes of varying brightness (standard cells)
   function logic(b, a = .38) {
     const [x0, z0, x1, z1] = b.map(P);
     for (let z = z0 + 2; z < z1 - 2; z += 4) for (let x = x0 + 2; x < x1 - 2;) {
       const w = 2 + rnd() * 9; g.fillStyle = `rgba(255,255,255,${a * (.3 + rnd() * .7)})`; g.fillRect(x, z, Math.min(w, x1 - 2 - x), 2.2); x += w + 1.5;
     }
   }
-  // a bus channel: parallel wires along the long side
   function bus(b) {
     const [x0, z0, x1, z1] = b.map(P), horiz = x1 - x0 > z1 - z0; g.fillStyle = 'rgba(255,255,255,.45)';
     if (horiz) for (let z = z0 + 1; z < z1; z += 5) g.fillRect(x0, z, x1 - x0, 1.2); else for (let x = x0 + 1; x < x1; x += 5) g.fillRect(x, z0, 1.2, z1 - z0);
   }
-  // split a box into macros: recursive cuts along the longer side, small gaps between; leaves get a pattern
   function split(b, depth, out) {
     const [x0, z0, x1, z1] = b, w = x1 - x0, h = z1 - z0, gap = .035;
     if (depth === 0 || (w < .16 && h < .16)) { out.push(b); return; }
@@ -64,43 +46,35 @@ export function dieTexture(THREE, palette = 'pastel', S = 4096) {
     if (k < .34) sram(b); else if (k < .72) logic(b); else if (k < .84) fill(b, .16); else bus(b);
     stroke(b, .62);
   }
-  // a mirrored unit: split the left half, draw it, and draw the same macros flipped about the unit's centre line
   function mirrored(b, depth) {
     const [x0, z0, x1, z1] = b, mid = (x0 + x1) / 2, out = []; split([x0, z0, mid - .02, z1], depth, out);
-    const s0 = seed; out.forEach(leaf); seed = s0;            // same seed for the mirror half, so its patterns match too
+    const s0 = seed; out.forEach(leaf); seed = s0;
     out.forEach(([a, c, d, e]) => leaf([2 * mid - d, c, 2 * mid - a, e]));
     stroke(b, .85, 2.2);
   }
   const grid = (b, cols, rows, fn) => { const [x0, z0, x1, z1] = b, w = (x1 - x0) / cols, h = (z1 - z0) / rows, gp = .05;
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) fn([x0 + c * w + gp / 2, z0 + r * h + gp / 2, x0 + (c + 1) * w - gp / 2, z0 + (r + 1) * h - gp / 2], c, r); };
 
-  // the memory interface and I/O: PHY strips along the top and right edges, a ring of pads, the seal ring
   stroke([-4.96, -4.96, 4.96, 4.96], .9, 3); stroke([-4.88, -4.88, 4.88, 4.88], .5, 1.5);
   for (const b of [[-4.55, -4.84, 4.55, -4.62], [4.62, -4.55, 4.84, 4.55]]) { grid(b, b[2] - b[0] > 1 ? 16 : 1, b[2] - b[0] > 1 ? 1 : 16, x => { sram(x, b[2] - b[0] > 1); stroke(x, .6); }); }
   g.fillStyle = 'rgba(255,255,255,.7)';
   for (let i = 0; i < 64; i++) { const t = -4.5 + i * (9 / 63), s = .07;
     for (const [x, z] of [[t, 4.75], [-4.75, t]]) g.fillRect(P(x - s), P(z - s), 2 * s * U, 2 * s * U); }
-  // spine buses between the blocks
   bus([-0.98, -4.55, -0.72, 4.55]); bus([-4.55, 1.58, 0.3, 1.82]); bus([0.08, 0.42, 4.55, 0.8]);
-  // CPU: 2 big cores on top, 4 small below, each mirrored, plus a shared L3 cache strip
   const cpu = DIE.cpu, cpuMid = cpu[1] + (cpu[3] - cpu[1]) * .48;
   grid([cpu[0], cpu[1], cpu[2], cpuMid], 2, 1, b => mirrored(b, 7));
   grid([cpu[0], cpuMid + .05, cpu[2], cpu[3] - .45], 4, 1, b => mirrored(b, 6));
   grid([cpu[0], cpu[3] - .4, cpu[2], cpu[3]], 6, 1, b => { sram(b, true); stroke(b, .6); });
   stroke(cpu, .9, 2.6);
-  // GPU: two mirrored halves of three shader slices each, with its own memory (GMEM) down the middle
   const gpu = DIE.gpu, gm = (gpu[0] + gpu[2]) / 2;
   grid([gpu[0], gpu[1], gm - .2, gpu[3]], 1, 3, b => mirrored(b, 7));
   grid([gm + .2, gpu[1], gpu[2], gpu[3]], 1, 3, b => mirrored(b, 7));
   grid([gm - .18, gpu[1], gm + .18, gpu[3]], 1, 8, b => { sram(b, false); stroke(b, .6); });
   stroke(gpu, .9, 2.6);
-  // system cache: banks of SRAM in a 2 x 4 grid
   grid(DIE.sram, 2, 4, b => { sram(b, false); stroke(b, .7, 1.6); });
   stroke(DIE.sram, .9, 2.6);
-  // camera (ISP), video and display: a mix of mirrored units and plain macros
   const misc = DIE.misc;
   grid(misc, 3, 2, (b, c) => (c === 1 ? mirrored(b, 6) : (() => { const out = []; split(b, 7, out); out.forEach(leaf); stroke(b, .85, 2.2); })()));
-  // NPU: 8 x 8 tiles, each a multiply-add array (a fine grid of dots) with its own SRAM strip
   for (let r = 0; r < NPU_N; r++) for (let c = 0; c < NPU_N; c++) {
     const [x0, z0, x1, z1] = npuTile(c, r), hz = z0 + (z1 - z0) * .7;
     g.fillStyle = 'rgba(255,255,255,.42)';
@@ -109,25 +83,23 @@ export function dieTexture(THREE, palette = 'pastel', S = 4096) {
   }
   stroke(DIE.npu, .9, 2.6);
 
-  // pass 2: the wash, then the line-art screened on top
   const c = document.createElement('canvas'); c.width = c.height = S; const q = c.getContext('2d');
   const blobs = palette === 'tactical'
-    ? { base: '#141619', spots: [[.2, .25, '#2c2f33'], [.75, .3, '#24272a'], [.3, .8, '#2a2c2e'], [.72, .74, '#3a4318']] }   // graphite, an acid glow on the NPU
+    ? { base: '#141619', spots: [[.2, .25, '#2c2f33'], [.75, .3, '#24272a'], [.3, .8, '#2a2c2e'], [.72, .74, '#3a4318']] }
     : { base: '#7f86c9', spots: [[.12, .18, '#8fb4ff'], [.55, .12, '#b7a2f2'], [.15, .85, '#f29ac8'], [.55, .6, '#d79ee6'], [.9, .55, '#9fc6f0'], [.85, .9, '#f2c98a']] };
   q.fillStyle = blobs.base; q.fillRect(0, 0, S, S);
   for (const [x, z, col] of blobs.spots) {
     const gr = q.createRadialGradient(x * S, z * S, 0, x * S, z * S, S * .55); gr.addColorStop(0, col); gr.addColorStop(1, col + '00');
     q.fillStyle = gr; q.fillRect(0, 0, S, S);
   }
-  q.globalAlpha = palette === 'tactical' ? .55 : .38; q.fillStyle = '#000'; q.fillRect(0, 0, S, S);   // darken the wash under the lines
+  q.globalAlpha = palette === 'tactical' ? .55 : .38; q.fillStyle = '#000'; q.fillRect(0, 0, S, S);
   q.globalAlpha = 1; q.globalCompositeOperation = 'screen';
-  if (palette === 'tactical') {                               // tint the line-art bone before screening it
+  if (palette === 'tactical') {
     const t = document.createElement('canvas'); t.width = t.height = S; const tg = t.getContext('2d');
     tg.drawImage(lc, 0, 0); tg.globalCompositeOperation = 'multiply'; tg.fillStyle = '#f1f0ea'; tg.fillRect(0, 0, S, S);
     q.drawImage(t, 0, 0);
   } else q.drawImage(lc, 0, 0);
   q.globalCompositeOperation = 'source-over';
-  // the k8 tile: outlined in the page's acid yellow, in both palettes
   const k = npuTile(...NPU_K8); q.strokeStyle = '#dff140'; q.lineWidth = 7;
   q.strokeRect(P(k[0]), P(k[1]), P(k[2]) - P(k[0]), P(k[3]) - P(k[1]));
   q.fillStyle = 'rgba(223,241,64,.12)'; q.fillRect(P(k[0]), P(k[1]), P(k[2]) - P(k[0]), P(k[3]) - P(k[1]));

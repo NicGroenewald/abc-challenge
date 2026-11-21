@@ -1,32 +1,19 @@
-/* viz-perf P1: the picture version of the page ("lite"), for a browser or computer that cannot run the live 3D view.
- *
- * What it shows: the same steps as the 3D step-by-step, one prepared picture per step (pics/step_<key>.webp, made by tools/make_pics.mjs),
- * the same card text at the chosen level (read from plain.js / beginner.js / expert.js, the files the 3D page uses), and Back / Next.
- * It is started by the boot script in index.html (K8_BOOT.startLite) when import maps or WebGL2 are missing, or with ?lite=1.
- *
- * Written in old-style JavaScript on purpose (ES5: var, function, string joins; no modules, arrow functions, template strings, let / const,
- * classList or dataset), and it styles itself with plain colours (no CSS variables), so it asks as little of the browser as possible.
- * The real floor is set by the pictures: they are WebP files. See notes/viz-perf.md for the browser versions.
- *
- * STEPS must stay in the same order as STEPS in index.html.
- */
 (function () {
   'use strict';
   var STEPS = ['input', 'feat', 'proj', 'mirror', 'blk0', 'blk1', 'blk2', 'reach', 'head', 'traj', 'out', 'gaze'];
   var LEVELS = ['beginner', 'standard', 'expert'];
   var BOOT = window.K8_BOOT || {};
-  var at = 0;               // 0 = the overview (whole model), 1..12 = STEPS[at - 1]
+  var at = 0;
   var level = 'standard';
   var root, picEl, textEl, stepEl, backEl, nextEl, lvlEl;
 
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
   function keyAt(i) { return i === 0 ? 'overview' : STEPS[i - 1]; }
   function saved(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
-  function save(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* not kept */ } }
+  function save(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {  } }
   function list(a, tag) { var h = '', i; if (!a || !a.length) return ''; for (i = 0; i < a.length; i++) h += '<' + tag + '>' + a[i] + '</' + tag + '>'; return h; }
   function chips(a) { var h = '', i; if (!a || !a.length) return ''; for (i = 0; i < a.length; i++) h += '<span class="lt-chip">' + a[i] + '</span>'; return '<div class="lt-chips">' + h + '</div>'; }
 
-  // The card text for one step at one level: the same fields, in the same order, as showCard() in index.html (without the parts that need the live 3D view).
   function textFor(key) {
     var P = (window.PLAIN || {})[key] || {}, B = (window.BEGINNER || {})[key], E = (window.EXPERT || {})[key], h;
     if (level === 'beginner' && B) {
@@ -50,10 +37,9 @@
   }
   function title(key) { var P = (window.PLAIN || {})[key]; return P && P.title ? P.title : key; }
 
-  // the small picture (800 x 500) unless the picture is shown wider than that in real screen pixels
   function picSrc(key) {
     var base = 'pics/' + (key === 'overview' ? 'whole' : 'step_' + key), w = (picEl.clientWidth || 800) * (window.devicePixelRatio || 1);
-    return base + (w > 960 ? '' : '_sm') + '.webp';   // up to 20% enlargement of the small one is not visible
+    return base + (w > 960 ? '' : '_sm') + '.webp';
   }
   function show(i) {
     var key, k, h = '';
@@ -136,10 +122,10 @@
       var k = e.keyCode, tag = e.target && e.target.tagName;
       if (e.altKey || e.ctrlKey || e.metaKey || b.getAttribute('data-side') === 'data') return;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-      if (k === 39 || k === 78) { next(); e.preventDefault(); }                      // → , N
-      else if (k === 37 || k === 66) { back(); e.preventDefault(); }                 // ← , B
-      else if (k === 36) { show(0); e.preventDefault(); }                            // Home
-      else if (k === 13 && tag !== 'BUTTON' && tag !== 'A') { next(); e.preventDefault(); }   // Enter, unless a button or link has the focus
+      if (k === 39 || k === 78) { next(); e.preventDefault(); }
+      else if (k === 37 || k === 66) { back(); e.preventDefault(); }
+      else if (k === 36) { show(0); e.preventDefault(); }
+      else if (k === 13 && tag !== 'BUTTON' && tag !== 'A') { next(); e.preventDefault(); }
     }, false);
     window.addEventListener('resize', function () { var img = picEl.firstChild, src = picSrc(keyAt(at)); if (img && img.tagName === 'IMG' && img.getAttribute('src') !== src && !/_sm/.test(src)) img.src = src; }, false);
     show(0);

@@ -1,7 +1,4 @@
-/* hero.css: the hero part's own styles (tickets 04a, 04b, 05). Empty until then; linked after story.css (CONTRACTS section 4). */
 
-/* deck 1's scene (scene_task.js): the small labels that name things in the 3D space. Real text, placed every frame at the
-   point it names (transform), in the page's mono face. Hidden from screen readers: the same figures are in the text beside. */
 .sc-labels { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
 .sc-lab { position:absolute; left:0; top:0; white-space:nowrap; font:400 clamp(10.5px, .78vw, 13px)/1.2 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--quiet); will-change:transform; }
 .sc-lab b { color:var(--ink); font-weight:400; }

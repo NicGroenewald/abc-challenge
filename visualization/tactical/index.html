@@ -5,9 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>k8_combined in 3D</title>
 <style>
-  /* theme (after the story, story.css section 2): black, Geist and Geist Mono, 1 px hairlines, small radii, no shadows.
-     Self-hosted fonts, the same files and declarations as story.css (SIL Open Font Licence 1.1, fonts/LICENSE-*.txt), declared here
-     too so the viewer does not depend on story.css for its type. Data colours (--blue … --past) are not part of the theme. */
   @font-face { font-family:'Geist'; font-weight:100 900; font-style:normal; font-display:swap; src:url('fonts/geist-latin-wght-normal.woff2') format('woff2'); }
   @font-face { font-family:'Geist Mono'; font-weight:100 900; font-style:normal; font-display:swap; src:url('fonts/geist-mono-latin-wght-normal.woff2') format('woff2'); }
   :root { --bg:#000; --panel:rgba(10,10,10,.82); --line:#2c2c2c; --fg:#eaeaea; --muted:#808080; --blue:#6fa8ff; --amber:#f0b24a;
@@ -16,18 +13,17 @@
   html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px/1.5 var(--sans); overflow:hidden; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
   .num, #readout, #params, #caption, #menu .val, #guideHud .gp, #guideHud .gsv, #tour .tn, #gazeKey .err, #wearHud .m, #inset table, #cmpCount .n { font-variant-numeric:tabular-nums; }
   #scene, #labels { position:fixed; inset:0; } #labels { pointer-events:none; }
-  /* viz-look P1: two label styles only. A stage name is a bordered pill (.stage); everything else is one quiet plain style, no border. */
   .lbl { font:500 11.5px/1.25 var(--sans); color:#c2c2c2; background:rgba(0,0,0,.72); border:0; padding:1px 6px; border-radius:5px; white-space:nowrap; }
-  .lbl.row { font-size:10.5px; line-height:1; padding:0 3px; background:none; color:#8f8f8f; }   /* row names beside a strip (ωx … gz, w x y z, κ) */
-  .lbl.ax { font-size:13px; font-weight:500; line-height:1; padding:0 2px; background:none; color:var(--fg); }   /* the readout grid's own axes: x y z, κ κ² κ³ */
-  .lbl.far, .lbl.clash { visibility:hidden; }               /* a step view: small labels of the other stages */
-  body:not(.alllabels) #labels .lbl.v { display:none; }   /* long explanatory labels: only with View options, Detailed labels */   /* round 5: every small label reads like the stage pills */
-  .lbl.occl { visibility:hidden; }                /* round 5: a label that would sit under the card, inset, key or tip bubble */
+  .lbl.row { font-size:10.5px; line-height:1; padding:0 3px; background:none; color:#8f8f8f; }
+  .lbl.ax { font-size:13px; font-weight:500; line-height:1; padding:0 2px; background:none; color:var(--fg); }
+  .lbl.far, .lbl.clash { visibility:hidden; }
+  body:not(.alllabels) #labels .lbl.v { display:none; }
+  .lbl.occl { visibility:hidden; }
   .lbl.stage { font:500 12.5px/1.2 var(--sans); color:var(--fg); background:rgba(10,10,10,.8); border:1px solid #3a3a3a; padding:4px 10px; border-radius:999px; }
   .lbl.click { pointer-events:auto; cursor:pointer; transition:border-color .15s, background .15s; }
   .lbl.click:hover { border-color:var(--btn-hover-line); background:rgba(20,20,20,.9); } .lbl.click.on { border-color:var(--fg); background:rgba(28,28,28,.92); }
   .lbl.method { color:var(--amber); }
-  .lbl.tap { color:#cfc4ff; }                      /* violet = taps and memory, the same violet as the boxes they name */
+  .lbl.tap { color:#cfc4ff; }
   #inset.gwide { width:360px; }
   body.nolabels #labels .lbl:not(.stage) { display:none; }
 
@@ -68,15 +64,12 @@
   #gazeKey .row { display:flex; align-items:center; gap:9px; margin:4px 0; } #gazeKey .k { width:26px; display:flex; justify-content:center; }
   #gazeKey .dot { width:10px; height:10px; border-radius:50%; } #gazeKey .bar { width:22px; height:2px; background:#e6ebf2; }
   #gazeKey .err { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); color:var(--muted); font:500 12px var(--mono); } #gazeKey .err b { color:var(--fg); }
-  /* proposal: one small inset per step (top right), a one-line caption above the bar, the parameter counter */
   #inset { top:58px; right:14px; width:300px; padding:9px 12px 8px; display:none; font-size:12px; color:var(--body); }
   #inset.show { display:block; } #inset h3 { margin:0 0 4px; font-size:12.5px; font-weight:500; color:var(--fg); }
   #inset svg { display:block; } #inset svg text { font-family:var(--mono); }
-  /* viz-look P1: captions under a figure are sentences, so they use the page's text font; only the numbers in them (b) and the tables stay monospace */
   #inset .m { font:400 12px/1.45 var(--sans); color:var(--muted); margin-top:4px; } #inset .m b { color:var(--fg); font:500 11.5px var(--mono); }
   #inset table { width:100%; border-collapse:collapse; font:500 12px var(--mono); } #inset td { padding:1px 2px; text-align:right; } #inset td:first-child { text-align:left; color:var(--muted); }
   #inset tr.off td { opacity:.18; }
-  /* round 2: inset tabs, calc tables, the pick highlight, a small ramp swatch */
   #inset { max-height:calc(100vh - 150px); overflow:auto; }
   #inset .tabs { display:flex; gap:4px; margin:2px 0 6px; flex-wrap:wrap; }
   #inset .tab { min-height:24px; padding:2px 8px; font-size:12px; border-radius:4px; color:var(--muted); }
@@ -89,28 +82,26 @@
   #inset .ramp { display:inline-flex; vertical-align:middle; } #inset .ramp i { width:9px; height:9px; display:inline-block; }
   .lbl.hl { color:#000; background:#ffd166; font-weight:600; }
   #menu input[type=range] { accent-color:var(--blue); width:110px; }
-  #caption { position:fixed; left:50%; transform:translateX(-50%); bottom:64px; padding:5px 12px; display:none; font:500 12px var(--mono); color:var(--muted); white-space:normal; text-align:center; max-width:min(860px, calc(100% - 32px)); line-height:1.6; }   /* round 6: wraps instead of overflowing */
+  #caption { position:fixed; left:50%; transform:translateX(-50%); bottom:64px; padding:5px 12px; display:none; font:500 12px var(--mono); color:var(--muted); white-space:normal; text-align:center; max-width:min(860px, calc(100% - 32px)); line-height:1.6; }
   #caption.show { display:block; } #caption .ph { padding:1px 4px; border-radius:4px; } #caption .ph.on { color:#000; background:var(--amber); }
   #params { font:500 12px var(--mono); color:var(--muted); white-space:nowrap; } #params b { color:var(--fg); font-weight:500; }
   #call { display:none; } #call.show { display:inline-block; }
-  /* round 6: fly mode hint, the first-person headset view */
   #flyHint { left:50%; transform:translateX(-50%); top:52px; padding:6px 12px; font-size:12.5px; color:var(--body); z-index:32; max-width:calc(100% - 32px); }
   #flyHint[hidden], #wearHud[hidden], #wearX[hidden], #wearRings[hidden] { display:none; }
   #wearRings { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:5; overflow:visible; }
   #wearRings circle { fill:none; stroke:#d9d9d9; stroke-opacity:.5; stroke-width:1.2; stroke-dasharray:4 4; }
   #wearRings text { font:500 12px var(--mono); fill:#e6ebf2; fill-opacity:.9; paint-order:stroke; stroke:#000; stroke-width:3px; }
   #flyBtn[aria-pressed="true"] { background:var(--on); border-color:var(--btn-hover-line); }
-  #wearX { position:fixed; left:50%; top:50%; transform:translate(-50%,-52%);   /* moved to the projected looking-now point each frame */ font:300 34px/1 var(--sans); color:#e6ebf2; text-shadow:0 0 4px #000; pointer-events:none; z-index:6; }
+  #wearX { position:fixed; left:50%; top:50%; transform:translate(-50%,-52%);    font:300 34px/1 var(--sans); color:#e6ebf2; text-shadow:0 0 4px #000; pointer-events:none; z-index:6; }
   #wearHud { right:14px; bottom:76px; width:300px; padding:9px 12px; font-size:12px; color:var(--body); z-index:6; }
   #wearHud h3 { margin:0 0 4px; font-size:13px; font-weight:500; } #wearHud .m { font:500 12px/1.5 var(--mono); color:var(--muted); } #wearHud .m b { color:var(--fg); font-weight:500; }
   body.wearing #inset, body.wearing #gazeKey, body.wearing #card, body.wearing #labels .lbl:not(.wear) { display:none !important; }
   #banner { position:fixed; left:50%; top:14px; transform:translateX(-50%); padding:7px 12px; background:#1f0d0d; border:1px solid #7a3434; border-radius:6px; font-size:13px; display:none; }
   @media (max-width: 900px) { #brand span { display:none; } #readout { display:none; } }
 
-  /* ================= round 8: UI chrome (docs/round8_ui_spec.md) + accessibility (review/a11y_findings.md) ================= */
   :root { --panel-solid:rgba(10,10,10,.95); --body:#a6a6a6; --btn:#0a0a0a; --btn-line:#2c2c2c; --btn-hover-line:#6b6b6b; --btn-hover:#141414; --btn-active:#050505;
     --on:#1c1c1c; --violet:#9b8cff; --violet-fill:#2a2350; --green:#4fd18b; --past:#5b6780; --divider:#1c1c1c;
-    --line-hi:#6b6b6b; --go:#193a29; --go-hi:#215038; --go-line:#24523a; --go-ink:#dcebe1;   /* --line-hi: an outline that carries meaning (the on state); --go*: the one primary action, the story's green */
+    --line-hi:#6b6b6b; --go:#193a29; --go-hi:#215038; --go-line:#24523a; --go-ink:#dcebe1;
     --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --r-sm:4px; --r-md:6px; --r-lg:10px; --r-pill:999px;
     --tap:40px; --tap-sm:32px; --bar-gap:14px; --bar-h:64px; --bar-clear:calc(var(--bar-h) + var(--bar-gap) + 10px);
     --t-fast:120ms; --t:180ms; --ease:cubic-bezier(.2,.7,.2,1); }
@@ -127,7 +118,6 @@
   button[aria-pressed="true"] { background:var(--on); border-color:var(--line-hi); }
   .b-icon { width:var(--tap); padding:0; justify-content:center; }
   .b-primary { background:var(--btn); border-color:var(--line-hi); } .b-primary:hover:not(:disabled) { background:var(--btn-hover); border-color:#8a8a8a; }
-  /* the one primary action per screen, in the story's green: Next, or "Back to the story" once the viewer was entered from the story (Next is then a plain outlined button) */
   #next, #storyBack { background:var(--go); border-color:var(--go-line); color:var(--go-ink); } #next:hover:not(:disabled), #storyBack:hover:not(:disabled) { background:var(--go-hi); border-color:var(--go-line); color:#fff; }
   #bar:has(#storyBack) #next { background:var(--btn); border-color:var(--line-hi); color:var(--fg); } #bar:has(#storyBack) #next:hover:not(:disabled) { background:var(--btn-hover); border-color:#8a8a8a; }
   .b-ghost { background:transparent; border-color:transparent; color:var(--muted); } .b-ghost:hover:not(:disabled) { color:var(--fg); background:var(--btn); }
@@ -136,14 +126,13 @@
   .b-primary:focus-visible, #next:focus-visible, #storyBack:focus-visible, button[aria-pressed="true"]:focus-visible { outline-color:#fff; }
   summary:focus-visible { outline:2px solid var(--blue); outline-offset:2px; border-radius:var(--r-sm); }
   #scene canvas:focus-visible { outline:2px solid var(--blue); outline-offset:-4px; }
-  .lbl.click { min-height:24px; display:inline-flex; align-items:center; }                         /* a11y F9: 24 px targets */
-  .lbl.click:focus-visible { outline:2px solid var(--blue); outline-offset:2px; border-color:var(--fg); background:rgba(28,28,28,.95); }   /* F2 */
+  .lbl.click { min-height:24px; display:inline-flex; align-items:center; }
+  .lbl.click:focus-visible { outline:2px solid var(--blue); outline-offset:2px; border-color:var(--fg); background:rgba(28,28,28,.95); }
   .skip { position:fixed; left:12px; top:-60px; z-index:50; padding:10px 14px; background:var(--on); color:var(--fg); border:1px solid var(--line-hi); border-radius:var(--r-md); }
   .skip:focus { top:12px; }
   .sr { position:fixed; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   kbd { font:500 12px/1 var(--mono); color:var(--fg); background:var(--btn-active); border:1px solid var(--btn-line); border-bottom-width:2px; border-radius:4px; padding:2px 5px; }
   #brand span { display:inline-block; max-width:calc(100vw - 32px - 320px - 24px - 120px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
-  /* bar: caption row + navigation | playback | tools */
   #bar { left:50%; transform:translateX(-50%); bottom:var(--bar-gap); width:min(1160px, calc(100% - 32px)); padding:var(--s2) var(--s3);
     display:flex; flex-direction:column; gap:var(--s2); border-radius:var(--r-lg); }
   #bar .row { display:flex; align-items:center; gap:var(--s3); min-width:0; }
@@ -162,7 +151,6 @@
   #scrub { flex:1 1 auto; min-width:160px; height:var(--tap); background:transparent; accent-color:var(--blue); }
   #readout { font:500 12px/1.3 var(--mono); color:var(--muted); white-space:nowrap; flex:0 0 auto; }
   #call { display:none; } #call.show { display:inline-flex; }
-  /* card: sticky header (level, minimise, close) + scrolling body with "Read more" */
   #card { left:16px; bottom:var(--bar-clear); width:360px; padding:0; display:none; max-height:calc(100vh - 56px - var(--bar-clear)); flex-direction:column; border-radius:var(--r-lg); }
   #card.show { display:flex; }
   #card .hd { position:sticky; top:0; display:flex; align-items:center; gap:var(--s1); padding:var(--s2) var(--s2) var(--s2) var(--s4); border-bottom:1px solid var(--line); }
@@ -176,7 +164,7 @@
   #card .bd.fade { -webkit-mask-image:linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image:linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
   #card h2 { font:500 17px/1.3 var(--sans); letter-spacing:-.01em; margin:0 0 var(--s1); padding:0; }
   #card .one { font-size:14px; margin:0 0 var(--s3); }
-  #card .prose { font-size:13.5px; line-height:1.55; margin:0 0 var(--s3); }   /* round 14: the expert level's technical prose */
+  #card .prose { font-size:13.5px; line-height:1.55; margin:0 0 var(--s3); }
   #card p { font-size:14px; line-height:1.55; margin:0 0 var(--s3); max-width:62ch; }
   #card details.more > summary { min-height:var(--tap-sm); display:flex; align-items:center; gap:6px; color:var(--blue); font-weight:500; list-style:none; cursor:pointer; }
   #card details.more > summary::-webkit-details-marker { display:none; }
@@ -187,7 +175,6 @@
   #card.min { max-height:none; width:auto; max-width:360px; } #card.min .bd, #card.min .lvl { display:none; }
   #card.min .hd { border-bottom:0; cursor:pointer; min-height:var(--tap); } #card .hd .ttl { display:none; }
   #card.min .hd .ttl { display:block; font:500 13px var(--sans); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:260px; }
-  /* right stack: user picker, Key, This step */
   #side { position:fixed; top:12px; right:14px; width:320px; max-height:calc(100vh - 12px - var(--bar-clear)); display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden;
     overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--btn-line) transparent; border-radius:var(--r-lg); }
   #side.gwide { width:360px; }
@@ -206,12 +193,11 @@
   #gazeKey, #inset { position:static; display:block; width:auto; min-width:0; max-height:none; overflow:visible; padding:0 var(--s3) var(--s3); font-size:13px; top:auto; right:auto; }
   #gazeKey .err, #inset .m, #inset table, #inset .tab { font-size:12px; }
   #gazeKey .notes summary { color:var(--muted); font-size:12px; min-height:var(--tap-sm); cursor:pointer; }
-  #gazeKey .dot.dia { border-radius:1px; transform:rotate(45deg) scale(.85); }   /* F15: true = diamond, predicted = round, in the key and in 3D */
+  #gazeKey .dot.dia { border-radius:1px; transform:rotate(45deg) scale(.85); }
   #inset .tab { min-height:var(--tap-sm); padding:0 10px; font-size:12px; border-radius:var(--r-sm); }
-  #inset .tab.on, #inset .tab[aria-selected="true"] { font-weight:500; box-shadow:inset 0 -2px 0 var(--fg); }   /* F19: not colour alone */
+  #inset .tab.on, #inset .tab[aria-selected="true"] { font-weight:500; box-shadow:inset 0 -2px 0 var(--fg); }
   #inset svg { max-width:100%; height:auto; }
   #inset [data-grid]:focus-visible, #inset [data-hx]:focus-visible { outline:2px solid var(--blue); outline-offset:1px; }
-  /* menu: anchored above the options button */
   #menu { position:fixed; right:calc((100vw - min(1160px, 100vw - 32px)) / 2); bottom:calc(var(--bar-clear) - 2px); width:300px; max-height:calc(100vh - 80px - var(--bar-clear));
     overflow-y:auto; padding:var(--s2) 0; background:var(--panel-solid); border-radius:var(--r-lg); display:none; flex-direction:column; gap:0; z-index:20; min-width:0; }
   #menu.show { display:flex; }
@@ -225,63 +211,51 @@
   #menu .hint { border-top:1px solid var(--line); margin:var(--s2) 0 0; padding:var(--s2) var(--s4) 0; font-size:12px; color:var(--muted); }
   #menu .hint summary { min-height:var(--tap-sm); display:flex; align-items:center; cursor:pointer; color:var(--fg); }
   #menu dl { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; margin:6px 0 8px; } #menu dt { color:var(--fg); } #menu dd { margin:0; }
-  /* shared tooltip */
   #tip { position:fixed; z-index:60; max-width:240px; padding:6px 10px; background:var(--panel-solid); border:1px solid var(--btn-line); border-radius:var(--r-md);
     font:500 12px/1.4 var(--sans); color:var(--fg); pointer-events:none; }
   #tip[hidden] { display:none; } #tip kbd { margin-left:6px; }
   #wearHud { right:14px; top:12px; bottom:auto; }
   body.wearing #side { display:none !important; }
-  /* responsive */
   @media (max-width: 1359px) { #bar .g-tools .bl { display:none; } #bar .g-tools button { width:var(--tap); padding:0; justify-content:center; }
     #card { width:320px; } #side { width:300px; } #side.gwide { width:330px; } #brand span { display:none; } }
   @media (max-width: 1199px) { #bar .row { flex-wrap:wrap; } #bar .g-play { min-width:0; flex-basis:100%; order:3; border-left:0 !important; padding-left:0 !important; } #readout { display:none; } }
-  @media (max-width: 700px) { #bar .grp { flex-wrap:wrap; } .stepbox { min-width:0; } #side { width:calc(100% - 28px); max-height:40vh; } #card { width:calc(100% - 32px); } }   /* F14 */
+  @media (max-width: 700px) { #bar .grp { flex-wrap:wrap; } .stepbox { min-width:0; } #side { width:calc(100% - 28px); max-height:40vh; } #card { width:calc(100% - 32px); } }
   @media (prefers-reduced-motion: reduce) { button, select, #params .trk i, #side .sh svg { transition:none !important; } }
 
-  /* ================= round 10: one coherent bar, a wider side panel with scaled insets, the compression overlay ================= */
-  #bar { width:auto; min-width:min(1160px, calc(100% - 32px)); max-width:calc(100% - 32px); }   /* the panel always contains every control */
+  #bar { width:auto; min-width:min(1160px, calc(100% - 32px)); max-width:calc(100% - 32px); }
   #bar .row { justify-content:space-between; }
   #bar .g-nav, #bar .g-tools { flex:0 0 auto; } #bar .grp { align-items:center; }
   #bar .g-play { flex:1 1 0; min-width:0; } #scrub { min-width:110px; }
-  #readout { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }   /* truncates (full text in its title) before anything leaves the panel */
+  #readout { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
   #bar .grp > button, #bar .stepbox, #scrub { height:var(--tap); min-height:var(--tap); }
-  /* viz-look P1: block steps add a fifth tool button (One call), which pushed Back and the last button off screen between 1200 and 1440 px.
-     So the tool buttons lose their text labels below 1500 px (was 1360) and the play row wraps below 1280 px (was 1200). */
   @media (max-width: 1499px) { #bar .g-tools .bl { display:none; } #bar .g-tools button { width:var(--tap); padding:0; justify-content:center; } }
   @media (max-width: 1279px) { #bar .row { flex-wrap:wrap; } #bar .g-play { min-width:0; flex-basis:100%; order:3; border-left:0 !important; padding-left:0 !important; } #readout { display:none; } }
   #params .trk { width:56px; height:4px; background:var(--line); box-shadow:inset 0 0 0 1px #3a3a3a; }
   #params .trk i { min-width:2px; }
   #side { width:410px; } #side.gwide { width:430px; }
-  #inset svg[role="img"] { width:100%; height:auto; max-width:none; display:block; }   /* charts / heatmaps fill the panel; small inline swatches keep their size */
+  #inset svg[role="img"] { width:100%; height:auto; max-width:none; display:block; }
   #side { height:auto; min-height:0; }
   #inset .m { font-size:12.5px; line-height:1.5; overflow-wrap:anywhere; }
   #gazeKey, #inset { padding:0 var(--s4) var(--s4); }
-  #card.cmp { left:calc((100vw - 438px) / 2); transform:translateX(-50%); width:min(640px, calc(100vw - 470px)); }   /* centred in the space left of #side, so its ✕ stays clear */
+  #card.cmp { left:calc((100vw - 438px) / 2); transform:translateX(-50%); width:min(640px, calc(100vw - 470px)); }
   #card.cmp .bd svg { width:100%; height:auto; display:block; }
   #card.cmp #cmpSay { font-size:15px; }
   @media (max-width: 1359px) { #side { width:360px; } #side.gwide { width:380px; } }
 
-  /* round 12: the compression story — the card docks on the left, the counter floats above the model */
   #card.cmpd { width:420px; } #card.cmpd .bd svg { width:100%; height:auto; display:block; }
   #card .cstep { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 8px; }
   #cmpCount { position:fixed; left:50%; top:62px; transform:translateX(-50%); z-index:4; text-align:center; pointer-events:none; }
   #cmpCount[hidden] { display:none; }
   #cmpCount .n { font:400 44px/1.05 var(--mono); letter-spacing:-.02em; color:var(--fg); text-shadow:0 2px 12px #000; }
   #cmpCount .t { font:500 14px/1.4 var(--sans); color:var(--body); text-shadow:0 1px 6px #000; }
-  #k8load { color:var(--muted) !important; font-family:var(--sans) !important; }   /* the loading note (inline-styled in the markup) in the theme's grey and type */
+  #k8load { color:var(--muted) !important; font-family:var(--sans) !important; }
   .lbl.zero { color:#000; background:#4fd18b; border-color:#4fd18b; font-weight:600; }
 </style>
-<!-- viz-phone: the phone, small-tablet and touch layout. Every rule in it hangs off html[data-form] or html.touch (set by phone.js), so a desktop window is untouched. -->
-<link rel="stylesheet" href="phone.css?r=t1">
-<link rel="stylesheet" href="story.css?r=f2">
+<link rel="stylesheet" href="phone.css?r=ph1">
+<link rel="stylesheet" href="story.css?r=ph1">
 <link rel="stylesheet" href="hero.css?r=h2">
-<link rel="stylesheet" href="tactical.css?r=sub1">   <!-- 16 Nov 2026: the Anduril-style theme over story.css, and the TAKE CONTROL section -->
+<link rel="stylesheet" href="tactical.css?r=ph3">
 <script>
-// P1 (viz-perf): the boot decision, written in old-style JavaScript (ES5) on purpose, so browsers too old for the 3D view still run it.
-// It chooses between the live 3D view and the picture version ("lite": lite.js, one picture per step, no WebGL), and the starting quality tier.
-//   lite  when import maps or WebGL2 are missing, or with ?lite=1
-//   tier  ?tier=full|light|min, else the choice saved from View options, else "min" when WebGL only runs in software (no usable graphics chip),
-//         else what this tab measured earlier, else "full". The 3D page then steps down by itself if frames are slow, and offers lite if even min crawls.
 window.K8_BOOT = (function () {
   function qp(n) { var m = new RegExp('[?&]' + n + '=([^&#]*)').exec(location.search); return m ? m[1] : null; }
   function store(s, k) { try { return window[s].getItem(k); } catch (e) { return null; } }
@@ -291,20 +265,19 @@ window.K8_BOOT = (function () {
     c = document.createElement('canvas'); gl = c.getContext('webgl2');
     if (!gl) B.why = 'This computer or browser cannot start WebGL2, which the live 3D view needs.';
     else { ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext();
-      c = document.createElement('canvas'); gl = c.getContext('webgl2', { failIfMajorPerformanceCaveat: true });   // fails when WebGL would be drawn by the processor, not a graphics chip
-      if (!gl) B.soft = true; else { ext = gl.getExtension('WEBGL_debug_renderer_info');   // some browsers do not fail the test above, so also read the renderer's name
+      c = document.createElement('canvas'); gl = c.getContext('webgl2', { failIfMajorPerformanceCaveat: true });
+      if (!gl) B.soft = true; else { ext = gl.getExtension('WEBGL_debug_renderer_info');
         if (ext && /swiftshader|llvmpipe|softpipe|software|basic render/i.test(String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)))) B.soft = true;
         ext = gl.getExtension('WEBGL_lose_context'); if (ext) ext.loseContext(); } }
   } catch (e) { B.why = 'This computer or browser cannot start WebGL2, which the live 3D view needs.'; }
   var lite = qp('lite'), t = qp('tier'), ok = { full: 1, light: 1, min: 1 }, saved = store('localStorage', 'k8tier'), auto = store('sessionStorage', 'k8tierAuto');
   B.forced = lite === '1';
   B.lite = !!B.why || lite === '1';
-  if (t === 'auto') B.tier = 'full';               // ?tier=auto: start on full and let the page measure, whatever was saved
+  if (t === 'auto') B.tier = 'full';
   else if (ok[t] === 1) { B.tier = t; B.tierMode = 'url'; }
   else if (ok[saved] === 1) { B.tier = saved; B.tierMode = 'manual'; }
   else if (B.soft) B.tier = 'min';
   else if (ok[auto] === 1) B.tier = auto;
-  // viz-phone: a phone (finger as the main pointer, short side up to 500 px) starts on "light" instead of "full". It stays in auto mode, so a slow phone still steps down to min.
   try { B.phone = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches && Math.min(window.innerWidth, window.innerHeight) <= 500); } catch (e) { B.phone = false; }
   if (B.phone && B.tierMode === 'auto' && B.tier === 'full' && t !== 'auto') B.tier = 'light';
   B.startLite = function (why) {
@@ -312,24 +285,17 @@ window.K8_BOOT = (function () {
     var s = document.createElement('script'); s.src = 'lite.js?r=t1'; document.getElementsByTagName('head')[0].appendChild(s);
   };
   return B; })();
-// story: the page opens as the scroll story (<main id="story">, styled by story.css). ?explore=1, ?side=…, ?lite=1 or ?tier=… opens the viewer as before.
-// In story mode neither the 3D module nor the picture version starts; the story's links reload the page with ?explore=1 to open the viewer.
 window.K8_STORY = !/[?&](explore=1|side=|lite=1|tier=)/.test(location.search);
 if (window.K8_STORY) document.documentElement.className += ' story';
 window.K8_NOSTART = window.K8_STORY ? 'story' : window.K8_BOOT.lite ? (window.K8_BOOT.why || 'picture version') : null;
-// story (ticket 03b): live 3D on the story's stages only with WebGL2 drawn by a graphics chip (spec/CONTRACTS.md section 3). story.js reads it before it loads a stage's module.
 window.K8_BOOT.live3d = !window.K8_BOOT.why && !window.K8_BOOT.soft;
 if (window.K8_BOOT.lite || window.K8_STORY) {
-  // Keep the 3D module (and the 2 MB of three.js it imports) from loading at all: its <script type="module"> is relabelled as the parser adds it.
-  // If a browser runs it anyway, the module stops at its own K8_NOSTART check.
   if (window.MutationObserver) { var k8mo = new MutationObserver(function (recs) { for (var i = 0; i < recs.length; i++) for (var j = 0; j < recs[i].addedNodes.length; j++) {
     var n = recs[i].addedNodes[j]; if (n.tagName === 'SCRIPT' && n.type === 'module') n.type = 'k8/skipped'; } });
     k8mo.observe(document.documentElement, { childList: true, subtree: true }); document.addEventListener('DOMContentLoaded', function () { k8mo.disconnect(); }); }
   if (!window.K8_STORY) window.K8_BOOT.startLite();
 }
 </script>
-<!-- story (ticket 03b): without JavaScript the boot script never sets html.story, so the same switch is made here: the story shows as
-     the plain article (story.css sections 1 to 7) and the viewer's panels, which need JavaScript, are hidden. -->
 <noscript><style>
   html:not(.story) #story { display:block; }
   html, body { height:auto; min-height:100%; overflow:visible; }
@@ -339,65 +305,43 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
 { "imports": { "three": "../vendor/three/build/three.module.js",
                "three/addons/": "../vendor/three/examples/jsm/" } }
 </script>
-<script src="../adapter.js"></script>
-<script src="assets/head.js?r=p2"></script>
-<!-- the neck rig as a classic script, as in ../proposal: the Data side (dataview.js) builds its head poser from window.K8HeadPose when it loads, which can be before the viewer module has run -->
-<script src="headpose.js?r=t2"></script>
-<script src="traces/index.js?r=q2"></script>
-<script src="plain.js?r=f1"></script>
-<script src="beginner.js?r=f1"></script>
-<script src="expert.js?r=f1"></script>
-<script src="insets.js?r=t1"></script>
-<script src="tour.js?r=t1"></script>
-<script src="guide.js?r=f1"></script>
+<script>
+if (!window.K8_STORY) document.write(
+  '<script src="../adapter.js"><\/script>' +
+  '<script src="assets/head.js?r=p2"><\/script>' +
+  '<script src="headpose.js?r=t2"><\/script>' +
+  '<script src="traces/index.js?r=q2"><\/script>' +
+  '<script src="plain.js?r=f1"><\/script>' +
+  '<script src="beginner.js?r=f1"><\/script>' +
+  '<script src="expert.js?r=f1"><\/script>' +
+  '<script src="insets.js?r=t1"><\/script>' +
+  '<script src="tour.js?r=ph1"><\/script>' +
+  '<script src="guide.js?r=ph1"><\/script>');
+</script>
 </head>
 <body>
-<!-- ================================================================ the story (styled by story.css, driven by story.js; shown when html.story is set by the boot script)
-     Every number below is copied from a file in the repo; the source is named in a comment beside it. Text marked .st-draft is for the team to write. -->
 <main id="story">
   <header class="st-top">
     <a class="st-name" href="#s-hook"><b>Motion Pending</b><span class="st-sub"> · Head-pose forecasting · 9th ABC Challenge</span></a>
     <nav aria-label="Chapters">
-      <a href="#s-challenge">Prediction</a><a href="#s-data">Data</a><a href="#s-model">Model</a><a href="#s-results">Results</a><a href="#s-paper">Paper</a>
-      <a class="st-gh" href="https://github.com/Motion-Pending/motion-pending.github.io" target="_blank" rel="noopener" aria-label="The team repo on GitHub (opens in a new tab)" title="Motion-Pending/motion-pending.github.io on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+      <button class="st-menu" type="button" aria-expanded="false" aria-controls="stChap" aria-label="Chapters"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+      <span class="st-chap" id="stChap"><a href="#s-challenge">Prediction</a><a href="#s-data">Data</a><a href="#s-model">Model</a><a href="#s-results">Results</a><a href="#s-paper">Paper</a></span>
+      <a class="st-gh" href="https://github.com/Motion-Pending/motion-pending" target="_blank" rel="noopener" aria-label="The team repo on GitHub (opens in a new tab)" title="Motion-Pending/motion-pending on GitHub"><svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
       <a class="st-cta" href="#s-model">Take control</a>
     </nav>
   </header>
 
-  <!-- ================================================================ the decks (ticket 03a): three pinned stacks of panels
-       Each .dk-step is one step of the story: a short text and one panel. Without motion they are laid out one under the other, as an article.
-       With motion (html.st-motion) story.js pins each deck's .dk-stage and stacks its panels: the current slot's panel in front, earlier
-       ones behind it as dim glass, and the text beside the stack swaps. data-key names a step, data-slot its place in the stack (steps
-       with the same slot share one held panel), data-phase the rail label it lights. Names: spec/CONTRACTS.md section 4.
-       Numbers and their sources are named in the comments of each phase. -->
 
-  <!-- ================================ deck 1: the task and the data -->
   <div class="dk-track" data-deck="task" data-end="close" id="s-deck">
     <div class="dk-stage">
       <ol class="dk-rail" aria-hidden="true"><li data-phase="prediction">Prediction</li><li data-phase="data">Data</li></ol>
-      <!-- the deck's open stage (ticket 03b, SPEC G1): the free area beside the text, where deck 1's live module (stage_task.js) draws one
-           scene. Empty until that module mounts its canvas; it takes no pointer input and no focus. story.js loads the module only with
-           real 3D and motion on; until the module sets data-live="on" the cards below are what the reader sees. -->
       <div class="dk-space" id="taskStage" role="img" aria-label="Live 3D: the task and the data" aria-describedby="heroDesc"></div>
 
-      <!-- ---------- phase 1: prediction. Task and scoring: repo README.md "The task", ORGANISER_FEEDBACK.md (200 ms confirmed 28 Oct 2026).
-           Figure: figs/challenge.svg, made by tools/make_questset_data.py from traces/test50.js (the QuestSet player, CC BY 4.0;
-           the call whose 200 ms turn is the trace's median). Until 20 Nov 2026 it was drawn from a BOXRR-23 test player
-           (tools/make_story_figs.mjs, traces/test25.js), which BOXRR-23's data use agreement does not allow publishing. -->
       <section class="dk-step" id="s-hook" data-key="hook" data-slot="hero" data-phase="prediction" data-side="right">
         <div class="dk-text">
           <p class="st-kicker">9th ABC Challenge · head-pose forecasting</p>
           <h1>Where will your head be in 200&nbsp;ms?</h1>
           <p class="st-lede">A VR headset has to draw the next frame for where you will be looking, not where you were. We built a model of 7,555 numbers that makes that guess 100 times a second.</p>
-          <!-- the hero's controls (CONTRACTS section 4), shown only once the task stage is live (#taskStage[data-live="on"]); filled by the hero part.
-               Its readout numbers come from hero/clip.js (window.K8_HERO_CLIP err and hold), made by tools/make_questset_data.py
-               (20 Nov 2026: a QuestSet Beat Saber player, CC BY 4.0, replaced the BOXRR-23 test player, because BOXRR-23's
-               data use agreement does not allow publishing its recordings. Same final model, final_k8_combined_v10_s42).
-               THE LINK BELOW IS THE ONE PLACE THE HERO STATES THE HEADLINE. Nic's decision, 13 Nov 2026: the full test leads.
-                 Shown: "4.50° over 1,049 held-out players" = full test, 1,049 users, 40,393,459 windows, endpoint mean 4.497899:
-                   ~/Dev/experiments/abc-testeval-results/test/report.md (PC run of 11 Nov 2026) and the paper's Table 2 (Authors/8_result.tex).
-                 Second reference, to flip to: "benchmark 4.18° over 20 held-out players" = group-a-v2-test20, 931,051 windows, 4.1836:
-                   nic/pc_runs/PC_RUNS.md (PC run of 13 Nov 2026). -->
           <div class="dk-live hr-live">
             <p class="dk-sr" id="heroDesc">A head wearing a VR headset replays a Beat Saber player's recorded head motion at quarter speed. The player is from QuestSet, a public dataset the model never trained on. A translucent ghost headset shows where the model predicts the headset will be 200&nbsp;ms later. Only the head's rotation is recorded and shown, not its position.</p>
             <div class="dk-ctl">
@@ -409,7 +353,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
           <a class="st-cue" href="#s-challenge">Scroll
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></a>
         </div>
-        <!-- the fallback picture: hero/poster.webp, rendered by models/poster_render.py (16 Nov: the Quest 3 headset; it was the box headset) -->
         <figure class="dk-fig"><div class="dk-panel pn-pic">
           <span class="pn-tag">one QuestSet player · 12 s of real motion</span>
           <div class="pn-body"><img id="heroPoster" src="hero/poster.webp?r=3" width="1600" height="1000" alt="A 3D head wearing a VR headset, with a thin line showing where the headset points."></div>
@@ -447,16 +390,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
         </div></figure>
       </section>
 
-      <!-- ---------- phase 2: data (13 Nov 2026: the final dataset, moredata_final.h5).
-           The three funnel steps (raw, rate, motion) count the one pull whose rejection log we have: data/pipeline/pull_counts.json (the PC pull,
-           snapshot_20261106c: 9,217 archives, 394,171 recordings, 159,099 in the rate band, 7,635 pass, 2,878 kept from 1,081 players), as shown on
-           the Data side (dataview.js STAGES). No rejection log of the other pulls is on this machine, so the text says "one batch" and gives no total.
-           All 1,081 players of that pull are in the final file (checked by tools/make_data_final.py).
-           Split: manifest_moredata_final.json "totals" and build_log.txt "final totals": 5,243 / 786 / 1,049
-           users, 7,078 together (the same split as the paper, Authors/8_result.tex). Training windows 204,603,125: data/pipeline/examples.js
-           final.splits.train.windows, counted from the file itself by tools/make_data_final.py (samples - 419 for each of the 14,482 train pieces).
-           The dot field has 50 × 20 = 1,000 dots, so one dot is about 394 recordings and one column is 2%. --from and --to are the share of
-           recordings still in before and after the step: 159,099 / 394,171 = .40363 and 7,635 / 394,171 = .01937. -->
       <section class="dk-step" id="s-data" data-key="raw" data-slot="raw" data-phase="data" data-side="left">
         <div class="dk-text">
           <p class="st-kicker">Data · raw</p>
@@ -503,7 +436,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
           <p class="st-kicker">Data · the split</p>
           <h2>Split by player.</h2>
           <p>The model is judged on strangers, so every player goes into one group only. Together with the players from our other batches, which went through the same checks, the final dataset holds 7,078 players and 204,603,125 training windows.</p>
-          <!-- DATA SIDE OFF (21 Nov 2026, side.js DATA_SIDE): <p><a href="?explore=1&amp;side=data">Step through all nine pipeline stages</a></p> -->
         </div>
         <figure class="dk-fig"><div class="dk-panel pn-split">
           <span class="pn-tag">7,078 players · no one in two groups</span>
@@ -518,9 +450,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
         </div></figure>
       </section>
 
-      <!-- window (ticket 03b, SPEC H2 shot 7): one model input lifts out of the training group. Text: the page's own figures, as on the Data side's
-           "One model input" stage (dataview.js: 4 s = 400 samples in, 200 ms = 20 samples out) and the split step (204,603,125 training windows
-           in the final file: data/pipeline/examples.js final.splits.train.windows, made by tools/make_data_final.py). Picture: the input figure, figs/challenge.svg, uncut (input and answer): QuestSet since 20 Nov 2026, see phase 1. -->
       <section class="dk-step" data-key="window" data-slot="window" data-phase="data" data-side="left">
         <div class="dk-text">
           <p class="st-kicker">Data · one model input</p>
@@ -538,12 +467,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
     </div>
   </div>
 
-  <!-- heading band between decks: scrolls normally, so the pinning never runs for more than seven steps at a time -->
-  <!-- ================================ Part 2 · the model, as TAKE CONTROL (16 Nov 2026: replaces deck 2, the nine model steps).
-       The live head and the interactive journey (headset → board → chip → model) run in journey/journey.html, in an iframe that loads
-       when this section comes near; tc.js launches it full screen and takes the page back when its ✕ is pressed. The model texts the
-       deck had now live in the journey's panels (journey/modelviews.js STAGES, copied from this deck's step texts). Numbers: 7,555
-       parameters (LEADERBOARD.md), 44,196 bytes (size of Submission/Motion_Pending_headpose/model_fp32.onnx), 200 ms / 20 poses (README). -->
   <section class="tc" id="s-model" aria-labelledby="tcTitle">
     <span class="tc-anchor" id="s-explore"></span>
     <h2 class="tc-type" id="tcTitle">TAKE CONTROL</h2>
@@ -565,15 +488,10 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
     <p class="st-break-line">Size, accuracy, speed and limits.</p>
   </header>
 
-  <!-- ================================ deck 3: the results (data-layers="open": in motion mode the four sheets are open layers in CSS 3D,
-       SPEC G6, placed by story.js). Four steps, one panel each, built from the figures that were the plain sections
-       "How it got this small", "The bar to beat", "Results" and "Limits"; every figure and sentence moved here unchanged, with its source. -->
   <div class="dk-track dk-results" data-deck="results" data-end="close" data-layers="open">
     <div class="dk-stage">
       <ol class="dk-rail" aria-hidden="true"><li data-phase="size">Size</li><li data-phase="accuracy">Accuracy</li><li data-phase="speed">Speed</li><li data-phase="limits">Limits</li></ol>
 
-      <!-- size. index.html CMP_STATES and the "How it got this small" card: 51,444 → 9,204 → 7,555; untied 15,113.
-           7,555 parameters: LEADERBOARD.md; 44,196 bytes: size on disk of the final ONNX (as in the results band) -->
       <section class="dk-step" id="s-results" data-key="size" data-slot="size" data-phase="size" data-side="left">
         <div class="dk-text">
           <p class="st-kicker">How it got this small</p>
@@ -593,15 +511,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
         </div></figure>
       </section>
 
-      <!-- accuracy (13 Nov 2026: final model final_k8_combined_v10_s42, runs on Nic's PC only).
-           Full test, 1,049 users, 40,393,459 windows: ~/Dev/experiments/abc-testeval-results/test/report.md (PC run of 11 Nov 2026), endpoint mean
-             tiny_tcnn 4.497899 (4.50), hold_last 6.699962 (6.70); the same two numbers are the paper's Table 2 (Authors/8_result.tex) and abstract.
-           Benchmark group-a-v2-test20, 20 users, 931,051 windows: nic/pc_runs/PC_RUNS.md, final_k8_combined_v10_s42 4.1836, damped_velocity 5.1137,
-             hold_last 6.0373.
-           Seeds 42 / 43 / 44, validation 4.542 / 4.553 / 4.546, seed 42 kept: paper 8_result.tex, Submission/Motion_Pending_headpose/model_card.md.
-           "Easier than average": paper 8_result.tex (hold-last 6.04 on the 20 against 6.70 on the full test).
-           Bars: all five share one scale, length = value / 6.699962 (the longest bar), so the two groups can be compared by eye.
-           Headline (Nic's decision, 13 Nov 2026): the full test leads (4.50 on 1,049 players, the paper's number); the 20-player benchmark is the second group. -->
       <section class="dk-step" id="s-baseline" data-key="accuracy" data-slot="accuracy" data-phase="accuracy" data-side="left">
         <div class="dk-text">
           <p class="st-kicker">Results</p>
@@ -634,12 +543,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
         </div></figure>
       </section>
 
-      <!-- speed and the number band (13 Nov 2026: final model, Nic's PC only; the Mac and phone timings are deliberately not shown).
-           Latency: bench/results/latency/nic-pc_20261111T220814.json, model final_k8_combined_v10_s42: median_ms 0.07752 with 1 thread (≈78 µs),
-             0.09208 with 4 threads (≈92 µs); machine "AMD Ryzen 7 5800X3D 8-Core Processor", Linux; ONNX Runtime CPUExecutionProvider, batch size 1,
-             3,000 timed calls in 3 rounds, 200 warm-up calls before each round. The same row is LEADERBOARD.md's nic-pc latency table (0.078 / 0.092 ms).
-           Error 4.50: the full test, as in the accuracy step. 7,555 parameters: nic/pc_runs/PC_RUNS.md and Submission/Motion_Pending_headpose/model_card.md.
-           44,196 bytes: the size on disk of Submission/Motion_Pending_headpose/model_fp32.onnx (sha256 28221e1e0b55…). -->
       <section class="dk-step" data-key="speed" data-slot="speed" data-phase="speed" data-side="left">
         <div class="dk-text">
           <p class="st-kicker">Speed</p>
@@ -661,20 +564,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
         </div></figure>
       </section>
 
-      <!-- limits (13 Nov 2026: final model final_k8_combined_v10_s42, runs on Nic's PC only).
-           THE LEDE'S TWO NUMBERS ARE THE ONE PLACE THIS STEP STATES THE HEADLINE TEST. Nic's decision, 13 Nov 2026: the full test leads.
-             Shown: median 3.60, p95 10.90 = full test, 1,049 users, 40,393,459 windows (endpoint median 3.600556, p95 10.902780):
-               ~/Dev/experiments/abc-testeval-results/test/report.md (PC run of 11 Nov 2026) and the paper's Table 2 (Authors/8_result.tex).
-             Second reference, to flip to ("On the 20-player benchmark, ..."): median 3.49, p95 9.68 (3.490047, 9.679349):
-               nic/pc_runs/group-a-v2-test20/final_k8_combined_v10_s42@nic-pc.json, accuracy.median_deg_step20 and p95_deg_step20.
-           Bars: Nic's 13 Nov 2026 traces (tools/make_trace_final.py from the final ONNX), mean_err20_deg of test25 3.6245, test75 6.0570,
-             test90 7.0134, with mean_speed_deg_s 31.05, 54.06, 70.30; bar length = value / 7.0134 (the longest). All three players are in the final
-             dataset's 1,049-user test split (checked by tools/check_trace_final.py). 20 Nov 2026: the three trace files were removed from the
-             site (BOXRR-23 recordings; its data use agreement does not allow publishing them). The bars are results, not recordings, and stay;
-             the 3D view's synthetic players syn25, syn75 and syn90 move at the same speeds (tools/make_synthetic_data.py traces).
-           "Beat Saber", "exact 100-a-second grid": paper Authors/3_dataset.tex and 8_result.tex; "a desktop PC": the speed step above (Nic's PC).
-           Before 13 Nov this step showed the 1,600-user model: LEADERBOARD.md row 1 (seed 42): median 3.530, p95 9.826; traces/index.js: mean error of the Calm, Turning and Fast turning test users;
-           repo README.md: test stream and Beat Saber -->
       <section class="dk-step" id="s-limits" data-key="limits" data-slot="limits" data-phase="limits" data-side="left">
         <div class="dk-text">
           <p class="st-kicker">Limits</p>
@@ -697,15 +586,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
     </div>
   </div>
 
-  <!-- 3. the team (13 Nov 2026). Names, their order and the affiliation: the author block of the latest paper draft
-         (ABC_Challenge_2027_formal_LATEST_DRAFT/main.tex, \author and \thanks). No emails, by Nic's decision (UPDATE_BRIEF.md, decision 1).
-         "Supervisors" for the last two authors is also that decision: the paper lists all six as authors without roles.
-         Team name: the submission folder, Submission/Motion_Pending_headpose. Roles are not in the paper: they stay marked for the team to write.
-         Each card: .tm-kind (label), h3 (name), .tm-role (one line). Replace each .st-draft span with the real line. -->
-  <!-- roles (Nic, 13 Nov 2026, his wording): Nic and Jacob the model side (architecture, compression, latency); Ray and Duncan the data side (data prep, pipeline). -->
-  <!-- explore (16 Nov 2026, Nic: "above the team, a link to the 3D space like the original had"). Three ways in: the interactive
-       journey (TAKE CONTROL, tc.js launches it), the full 3D model viewer (?explore=1) and the 3D data pipeline (?explore=1&side=data).
-       Styled in tactical.css section 4. -->
   <section class="st-sec xp" id="s-explore3d" aria-labelledby="xpH">
     <p class="st-kicker">Explore it yourself</p>
     <h2 id="xpH">Two ways in.</h2>
@@ -716,10 +596,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
       <li><a class="xp-row" href="?explore=1">
         <span class="xp-n">02</span><span class="xp-t">The model, in 3D<small>Every layer of k8, live on a recorded player. Build it one part at a time, or take the guided tour.</small></span>
         <span class="xp-tag">3D space · model</span><span class="xp-go" aria-hidden="true">→</span></a></li>
-      <!-- DATA SIDE OFF (21 Nov 2026, side.js DATA_SIDE; the heading above was "Three ways in."):
-      <li><a class="xp-row" href="?explore=1&amp;side=data">
-        <span class="xp-n">03</span><span class="xp-t">The data pipeline, in 3D<small>Nine stages from 394,171 raw recordings to one model input.</small></span>
-        <span class="xp-tag">3D space · data</span><span class="xp-go" aria-hidden="true">→</span></a></li> -->
     </ol>
   </section>
 
@@ -728,9 +604,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
     <h2>Motion Pending: four students, one small model.</h2>
     <p class="st-lede">Four students and two supervisors. Computer Science Department, Munster Technological University, Cork, Republic of Ireland.</p>
     <ul class="tm-grid">
-      <!-- LinkedIn links (21 Nov 2026): as listed on the 9th ABC Challenge site (sites.google.com/view/9th-abc-challenge/home).
-           Duncan has none there; his is from Nic (21 Nov 2026). GitHub links: each person's own copy of the code, where they have one
-           (Ray and Duncan: add when they make one). -->
       <li class="tm-card"><p class="tm-kind">Team member</p><h3>Jacob Dorrill</h3><p class="tm-role">Model side: model architecture, compression and latency</p><span class="tm-links"><a class="tm-link" href="https://www.linkedin.com/in/jacob-dorrill/" target="_blank" rel="noopener" aria-label="Jacob Dorrill on LinkedIn (opens in a new tab)">LinkedIn ↗</a><a class="tm-link" href="https://github.com/JacobDrizzle/abc-challenge" target="_blank" rel="noopener" aria-label="Jacob Dorrill's copy of the code on GitHub (opens in a new tab)">GitHub ↗</a></span></li>
       <li class="tm-card"><p class="tm-kind">Team member</p><h3>Nicholas Groenewald</h3><p class="tm-role">Model side: model architecture, compression and latency</p><span class="tm-links"><a class="tm-link" href="https://www.linkedin.com/in/nicholas-groenewald1/" target="_blank" rel="noopener" aria-label="Nicholas Groenewald on LinkedIn (opens in a new tab)">LinkedIn ↗</a><a class="tm-link" href="https://github.com/NicGroenewald/abc-challenge" target="_blank" rel="noopener" aria-label="Nicholas Groenewald's copy of the code on GitHub (opens in a new tab)">GitHub ↗</a></span></li>
       <li class="tm-card"><p class="tm-kind">Team member</p><h3>Ray Crowley</h3><p class="tm-role">Data side: data preparation and the pipeline</p><span class="tm-links"><a class="tm-link" href="https://www.linkedin.com/in/ray-e-crowley/" target="_blank" rel="noopener" aria-label="Ray Crowley on LinkedIn (opens in a new tab)">LinkedIn ↗</a></span></li>
@@ -743,11 +616,6 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
     </ul>
   </section>
 
-  <!-- the paper. Not written yet (10 Nov), so this is the empty state. When there is a PDF:
-         1. put it in this folder as paper/paper.pdf
-         2. delete the <div class="pp-empty"> block below and take the comment marks off the "ready" block
-         3. if it is posted somewhere, put that address in the second link; otherwise delete that link
-       The PDF is shown by the browser's own viewer inside the frame (it scrolls on its own); browsers that cannot show it get the link. -->
   <section class="st-sec st-paper" id="s-paper">
     <p class="st-kicker">The paper</p>
     <h2>The full write-up.</h2>
@@ -755,30 +623,18 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
       <p class="pp-soon">Coming soon.</p>
       <p>Our paper, “Symmetry in Motion: A Compact Network for Head-Pose Prediction”, is under review for ABC 2027. Once it is published you can read it here, with a link to the published version.</p>
     </div>
-    <!-- ready:
-    <p class="st-lede">Read it here, or open it on its own.</p>
-    <p class="pp-links"><a href="paper/paper.pdf">Open the PDF</a><a href="PUBLISHED-ADDRESS">Published version</a></p>
-    <object class="pp-doc" data="paper/paper.pdf#view=FitH" type="application/pdf" aria-label="The paper, as a PDF">
-      <p>This browser cannot show the PDF inside the page. <a href="paper/paper.pdf">Open the PDF</a>.</p>
-    </object>
-    -->
   </section>
 
-  <!-- 11. credits. Links: repo AGENTS.md; three.js licence: ../vendor/three; fonts: ../fonts/LICENSE-*.txt -->
   <section class="st-sec st-credits" id="s-credits">
     <p class="st-kicker">Credits</p>
     <h2>Who and what this stands on.</h2>
     <dl>
       <dt>Challenge</dt><dd><a href="https://sites.google.com/view/9th-abc-challenge/home">9th ABC Challenge</a> at <a href="https://autocare.ai/abc2027">ABC 2027</a>. This page is the team's own work and is not endorsed by the organisers.</dd>
       <dt>Data</dt><dd>The model was trained on <a href="https://rdi.berkeley.edu/metaverse/boxrr-23/">BOXRR-23</a>: V. Nair, W. Guo, R. Wang, J. F. O'Brien, L. Rosenberg and D. Song, "Berkeley Open Extended Reality Recordings 2023 (BOXRR-23)", <a href="https://doi.org/10.25350/B5NP4V">doi:10.25350/B5NP4V</a>, licensed under <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a> with an ethical data use agreement. The trained model and results are shared under the same licence.</dd>
-      <!-- 20 Nov 2026: CC BY 4.0 needs title, author, source, licence and a note of changes (tools/make_questset_data.py) -->
-      <!-- 20 Nov 2026: tools/make_synthetic_data.py, tools/synthetic_motion.py -->
       <dt>Synthetic data</dt><dd>The 3D model view's four faster replay players are synthetic head motion made for this page, because BOXRR-23's data use agreement does not allow passing its recordings on. They are not recordings of anyone. The counts about BOXRR-23 are real.</dd>
       <dt>Replay data</dt><dd>The hero clip and the model's main replay use head motion from <a href="https://researchdata.cab.unipd.it/1239/">QuestSet</a> (Baldoni et al., 2024), licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Modified: head rotation only, converted to the model's frame and resampled to 100&nbsp;Hz. The model was not trained on it.</dd>
-      <!-- Team: the paper's author block (main.tex \author, \thanks), names only; "supervisors" from UPDATE_BRIEF.md decision 1 -->
       <dt>Team</dt><dd>Motion Pending: Jacob Dorrill, Nicholas Groenewald, Ray Crowley and Duncan O'Regan. Supervisors: Ruairi O'Reilly and JingHua Ye. Computer Science Department, Munster Technological University, Cork, Republic of Ireland. Jacob and Nicholas worked on the model side (model architecture, compression and latency); Ray and Duncan on the data side (data preparation and the pipeline).</dd>
-      <dt>Code</dt><dd>The model, the benchmark and this site are on GitHub at <a href="https://github.com/Motion-Pending/motion-pending.github.io">Motion-Pending/motion-pending.github.io</a>. Personal copies: <a href="https://github.com/JacobDrizzle/abc-challenge">Jacob Dorrill</a> and <a href="https://github.com/NicGroenewald/abc-challenge">Nicholas Groenewald</a>.</dd>
-      <!-- 16 Nov 2026: CC BY 4.0 needs title, author, source, licence and a note of changes (models/CREDITS.md) -->
+      <dt>Code</dt><dd>The model, the benchmark and this site are on GitHub at <a href="https://github.com/Motion-Pending/motion-pending">Motion-Pending/motion-pending</a>. Personal copies: <a href="https://github.com/JacobDrizzle/abc-challenge">Jacob Dorrill</a> and <a href="https://github.com/NicGroenewald/abc-challenge">Nicholas Groenewald</a>.</dd>
       <dt>Headset model</dt><dd>"<a href="https://sketchfab.com/3d-models/meta-quest-3-65a813833dc04eeeb7d33bdca58c184c">Meta Quest 3</a>" by <a href="https://sketchfab.com/ElinHohler">Elin</a>, licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Modified: logo removed, fitted to the head. Meta Quest is a trademark of Meta; this page is not affiliated with Meta.</dd>
       <dt>Head model</dt><dd>Head mesh from Blender Studio's <a href="https://www.blender.org/download/demo-files/">Human Base Meshes</a> bundle v1.4.1 (CC0), adapted by us.</dd>
       <dt>Circuit board</dt><dd>Modelled by us after the photos and part list in iFixit's <a href="https://www.ifixit.com/Guide/Meta+Quest+3+Chip+ID/165932">Meta Quest 3 Chip ID</a> (2023): only positions and sizes were measured, no iFixit image is used. Chip markings are the parts' own; Qualcomm, Snapdragon, SK hynix, Qorvo and STMicroelectronics are trademarks of their owners.</dd>
@@ -786,10 +642,8 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
     </dl>
   </section>
 </main>
-<script src="story.js?r=q1"></script>
-<script src="tc.js?r=t3"></script>   <!-- TAKE CONTROL: loads and launches journey/journey.html -->
-<div id="scene" role="img" aria-label="3D view of the k8_combined head-pose model"></div>
-<!-- viz-perf P1: shown from the first paint until the first trace is on screen (or the picture version starts), so the page is never blank -->
+<script src="story.js?r=ph1"></script>
+<script src="tc.js?r=ph1"></script><div id="scene" role="img" aria-label="3D view of the k8_combined head-pose model"></div>
 <div id="k8load" role="status" style="position:fixed;left:50%;top:45%;transform:translate(-50%,-50%);z-index:3;color:#8f9cb0;font:15px/1.5 system-ui,sans-serif;text-align:center;pointer-events:none">Loading the model…<br><span style="font-size:13px">about 6 MB; a slow computer needs a few seconds</span></div>
 <a class="skip" href="#next">Skip to controls</a>
 <div id="brand"><b>k8_combined</b><span>4 s of head motion in, the next 200 ms out · click a part’s name in the scene to learn what it does</span></div>
@@ -870,11 +724,9 @@ if (window.K8_BOOT.lite || window.K8_STORY) {
 <div id="cmpCount" hidden aria-live="polite"><div class="n">51,444</div><div class="t"></div></div>
 <div id="tip" role="tooltip" hidden></div>
 <div id="srLive" class="sr" aria-live="polite"></div>
-<!-- viz-data: Data | Model switch. side.js adds the two tabs to #brand and the #dataView container, sets body[data-side] and fires "k8:side"; the Data side itself loads on first use. -->
 <script src="side.js?r=off1"></script>
-<!-- viz-phone: sets html[data-form] and html.touch, builds the sheet's tab strip, and gives the 3D module window.K8Phone (free rectangle, view offset) -->
-<script src="phone.js?r=p1"></script>
+<script src="phone.js?r=ph1"></script>
 
-<script type="module" src="viewer.mjs?r=q1"></script>
+<script type="module" src="viewer.mjs?r=ph1"></script>
 </body>
 </html>

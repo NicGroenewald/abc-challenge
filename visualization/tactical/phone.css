@@ -1,22 +1,10 @@
-/* viz-phone: phones, small tablets and touch. Loaded by index.html after its own <style>, so these rules win.
-
-   phone.js puts two things on <html>, and every rule here hangs off them, so a desktop window is untouched:
-     html[data-form="sheet"]   narrow and upright (up to 900 px wide, taller than wide): the scene on top, one
-                               bottom sheet with tabs under it, the bar at the very bottom
-     html[data-form="column"]  low and wide (a phone on its side, up to 500 px high, or up to 900 px wide):
-                               the sheet becomes a column on the left, the scene is on the right
-     html.touch                the main pointer is a finger: 44 px targets, no fly mode
-
-   "Sheet" = the one panel that holds the explanation card, the step's figure and the test-user picker,
-   one at a time, picked with the tabs in #sheetTabs (made by phone.js). */
 
 html.touch { --tap:44px; --tap-sm:44px; }
 html[data-form] { --tap:44px; --tap-sm:44px; --safe-b:env(safe-area-inset-bottom, 0px); --safe-l:env(safe-area-inset-left, 0px); --safe-r:env(safe-area-inset-right, 0px); --safe-t:env(safe-area-inset-top, 0px); }
 html[data-form], html[data-form] body { height:100dvh; }
 #sheetTabs { display:none; }
 
-/* ---------- touch, any size ---------- */
-html.touch #flyBtn, html[data-form] #flyBtn { display:none !important; }          /* fly mode needs a keyboard and a locked mouse pointer */
+html.touch #flyBtn, html[data-form] #flyBtn { display:none !important; }
 html.touch #sideTabs button { min-height:44px; padding:0 14px; }
 html.touch #menu label { min-height:44px; }
 html.touch #menu input[type=checkbox] { width:20px; height:20px; }
@@ -25,19 +13,14 @@ html.touch #inset .lnk { min-height:44px; }
 html.touch #tour button, html.touch #guideHud button, html.touch #tourEdge { min-height:44px; }
 html.touch #dvTabs button { min-height:44px; }
 html.touch #card summary, html.touch #gazeKey .notes summary, html.touch #menu .hint summary { min-height:44px; }
-html.touch #inset [data-hx] { touch-action:pan-y; }                               /* a sideways drag on a chart picks a step; up and down still scrolls */
-/* A stage name in the scene keeps its small look, but its touch area grows to 44 px with an invisible margin. */
+html.touch #inset [data-hx] { touch-action:pan-y; }
 html.touch .lbl.click::after { content:""; position:absolute; left:-6px; right:-6px; top:50%; height:44px; transform:translateY(-50%); }
-html.touch .lbl.click { touch-action:none; }                                         /* a drag that starts on a name must not scroll or zoom the page */
+html.touch .lbl.click { touch-action:none; }
 #touchHelp { display:none; } html.touch #touchHelp { display:block; }
 
-/* ================= the Model side, both phone forms ================= */
 html[data-form] body:not(.lite) #brand { top:calc(4px + var(--safe-t)); left:calc(10px + var(--safe-l)); display:flex; align-items:center; height:44px; }
 html[data-form] #brand > span { display:none; }
 html[data-form] #sideTabs { margin-left:10px; }
-/* Scene labels. Eleven stage names do not fit a 370 px wide scene, so a stage shows its step number in a small disc (the same
-   number as "6/12" in the bar) and the sheet lists number and name (#stageLegend, made by phone.js). The stage you are on keeps
-   its full name. On a step view the other stages' discs are hidden, and so are the tap-offset tags (−8 −32 −56 …). */
 html[data-form] .lbl.stage { font-size:11.5px; padding:3px 8px; }
 html[data-form] .lbl.stage[data-n]:not(.on) { font-size:0; width:26px; height:26px; min-height:0; padding:0; justify-content:center; border-radius:50%; }
 html[data-form] .lbl.stage[data-n]:not(.on)::before { content:attr(data-n); font:500 12px/1 var(--mono); color:var(--fg); }
@@ -62,22 +45,20 @@ html[data-sheetmin] #sheetTabs .fold svg { transform:rotate(180deg); }
 html[data-sheetmin] #sheetTabs { border-radius:var(--r-lg); }
 body.wearing #sheetTabs { display:none !important; }
 
-/* the card and the side panel share the sheet's rectangle; the tab decides which one shows */
 html[data-form] body:not(.lite) #card, html[data-form] body:not(.lite) #side {
   display:none !important; position:fixed; left:var(--sh-l); right:auto; width:var(--sh-w); top:auto; bottom:var(--sh-b); height:var(--sh-h); max-height:none; min-height:0; max-width:none;
   transform:none; border-radius:0 0 var(--r-lg) var(--r-lg); border-top:0; background:#0a0a0a; -webkit-backdrop-filter:none; backdrop-filter:none; }
 html[data-form][data-sheet="card"]:not([data-sheetmin]) body:not(.lite):not(.wearing) #card { display:flex !important; }
 html[data-form][data-sheet="step"]:not([data-sheetmin]) body:not(.lite):not(.wearing) #side,
 html[data-form][data-sheet="user"]:not([data-sheetmin]) body:not(.lite):not(.wearing) #side { display:flex !important; }
-/* card: its own minimise and close buttons are replaced by the sheet's fold button */
 html[data-form] #card .min, html[data-form] #card .x, html[data-form] #card .hd .ttl { display:none !important; }
 html[data-form] #card.min .bd { display:block; } html[data-form] #card.min .lvl { display:inline-flex; }
 html[data-form] #card .hd { padding:6px 10px; flex:none; cursor:default; min-height:0; border-bottom:1px solid var(--line); }
 html[data-form] #card .lvl { flex:none; } html[data-form] #card .lvl button { min-height:44px; height:44px; padding:0 14px; font-size:13px; }
-html[data-form] #card .bd { flex:1 1 auto; min-height:0; padding:10px 14px 14px; }
+html[data-form] body:not(.lite) #card { overflow-y:auto; overscroll-behavior:contain; }
+html[data-form] #card .bd { flex:none; min-height:0; overflow:visible; padding:10px 14px 14px; }
 html[data-form] #card p { max-width:none; }
 html[data-form] #card.cmp, html[data-form] #card.cmpd { left:var(--sh-l); width:var(--sh-w); transform:none; }
-/* side panel: no headers of its own; "This step" shows the key and the figure, "Test user" shows the picker */
 html[data-form] #side .sh, html[data-form] #sideCollapse { display:none !important; }
 html[data-form] #side .sec { border-top:0; }
 html[data-form][data-sheet="step"] #side #userbox { display:none !important; }
@@ -90,7 +71,6 @@ html[data-form] #userbox label { font-size:13px; }
 html[data-form][data-sheet="user"] #sheetUserNote { display:block; color:var(--muted); font-size:13px; line-height:1.5; padding:0 14px 14px; }
 #sheetUserNote { display:none; }
 
-/* the bar */
 html[data-form] body:not(.lite) #bar { left:calc(8px + var(--safe-l)); right:calc(8px + var(--safe-r)); bottom:calc(8px + var(--safe-b)); transform:none; width:auto; min-width:0; max-width:none; padding:6px 8px; gap:6px; }
 html[data-form] #bar .row { gap:8px; }
 html[data-form] #bar .grp { flex-wrap:nowrap; gap:6px; }
@@ -102,15 +82,16 @@ html[data-form] .stepbox { min-width:0; max-width:none; flex:1 1 auto; overflow:
 html[data-form] #params .trk { display:none; }
 html[data-form] #next { width:96px; }
 html[data-form] #scrub { min-width:56px; }
-html[data-form] #caption { display:none !important; }                             /* the one-line formula / "Press One call (C) … click …" hint: keyboard and mouse wording, and it does not fit; the card and ⋯ say the same */
+html[data-form] #caption { display:none !important; }
 
-/* the menu, the tour, small notices */
 html[data-form] body:not(.lite) #menu { left:calc(8px + var(--safe-l)); right:calc(8px + var(--safe-r)); width:auto; bottom:calc(var(--bar-h) + 14px + var(--safe-b)); max-height:calc(100dvh - var(--bar-h) - 70px - var(--safe-b)); z-index:35; }
 html[data-form] #keysHelp { display:none; }
 html[data-form] #guideHud { top:calc(50px + var(--safe-t)); left:auto; right:calc(8px + var(--safe-r)); transform:none; gap:6px; padding:4px 6px 6px 10px; max-width:calc(100vw - 16px); }
 html[data-form] #guideHud .gt, html[data-form] #guideHud .gsl { display:none; }
-/* A tip is docked, not floating: over the sheet when it points into the scene (so the scene stays whole), or along the top of the
-   scene when it points at something inside the sheet or the bar. tour.js reads the box's real place for its pointer line. */
+html[data-form] #guideHud .gp { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+html[data-form] #guideHud button { flex:none; padding:0 10px; }
+html[data-form="sheet"] #guideHud { top:calc(4px + var(--safe-t)); left:calc(86px + var(--safe-l)); right:calc(8px + var(--safe-r)); max-width:none; }
+html[data-form="sheet"] body:has(#guideHud:not([hidden])) #brand > :not(#toStory) { visibility:hidden; }
 html[data-form] #tour { left:var(--sh-l) !important; top:auto !important; bottom:var(--sh-b); width:var(--sh-w); max-width:none !important; height:calc(var(--sh-h) + 46px); max-height:none;
   border-radius:var(--r-lg); padding:12px 14px 10px; display:flex; flex-direction:column; font-size:14.5px; box-shadow:none; background:#050505; z-index:34; }
 html[data-form] #tour[hidden] { display:none; }
@@ -124,26 +105,27 @@ html[data-form] #flyHint { display:none !important; }
 html[data-form] #wearHud { left:calc(8px + var(--safe-l)); right:calc(8px + var(--safe-r)); top:auto; bottom:calc(8px + var(--safe-b)); width:auto; z-index:36; background:var(--panel-solid); }
 html[data-form] body.wearing #bar { display:none !important; }
 html[data-form] #cmpCount { top:calc(52px + var(--safe-t)); } html[data-form] #cmpCount .n { font-size:30px; }
-html[data-form] #tip { display:none !important; }                                 /* hover tooltips: the same words are listed under ⋯, "What the buttons do" */
+html[data-form] #tip { display:none !important; }
 html[data-form] #k8load { top:26%; width:80%; }
 
-/* ---------- form "sheet": upright ---------- */
-html[data-form="sheet"] { --sh-l:calc(8px + var(--safe-l)); --sh-w:calc(100vw - 16px - var(--safe-l) - var(--safe-r)); --sh-b:calc(var(--bar-h) + 14px + var(--safe-b)); --sh-h:clamp(150px, 31dvh, 330px); }
-html[data-form="sheet"] #sheetTabs { bottom:calc(var(--sh-b) + var(--sh-h)); }
+html[data-form="sheet"] { --sh-l:calc(8px + var(--safe-l)); --sh-w:calc(100vw - 16px - var(--safe-l) - var(--safe-r)); --sh-b:calc(var(--bar-h) + 14px + var(--safe-b)); --sh-h:clamp(150px, 28dvh, 300px); }
+html[data-form="sheet"] #sheetTabs { bottom:calc(var(--sh-b) + var(--sh-h)); height:44px; }
 html[data-form="sheet"][data-sheetmin] #sheetTabs { bottom:var(--sh-b); }
-@media (max-width: 600px) {
-  html[data-form="sheet"] #bar .row { flex-wrap:wrap; row-gap:6px; }
-  html[data-form="sheet"] #bar .g-nav { flex:1 0 100%; }
-  html[data-form="sheet"] #bar .g-play { flex:1 1 0; min-width:0; order:0; border-left:0 !important; padding-left:0 !important; }
-  html[data-form="sheet"] #bar .g-tools { flex:0 0 auto; order:0; }
-}
-@media (min-width: 601px) {
-  html[data-form="sheet"] #bar .row { flex-wrap:nowrap; }
-  html[data-form="sheet"] #bar .g-play { flex:1 1 0; min-width:0; flex-basis:0; order:0; border-left:1px solid var(--divider) !important; padding-left:8px !important; }
-  html[data-form="sheet"] .stepbox { flex:0 1 190px; }
-}
+html[data-form="sheet"] #bar .row { flex-wrap:nowrap; gap:6px; }
+html[data-form="sheet"] #bar .g-nav { flex:1 1 auto; min-width:0; }
+html[data-form="sheet"] #bar .g-play, html[data-form="sheet"] #bar .g-tools { flex:0 0 auto; min-width:0; order:0; border-left:0 !important; padding-left:0 !important; }
+html[data-form="sheet"] #next { width:52px; padding:0; justify-content:center; } html[data-form="sheet"] #next .bl { display:none; }
+html[data-form="sheet"] .stepbox { flex:1 1 auto; min-width:0; }
+html[data-form="sheet"] .stepbox > span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+#phoneTools { display:none; }
+html[data-form="sheet"] #phoneTools { display:flex; flex-direction:column; gap:6px; padding:4px var(--s4, 16px) 8px; border-bottom:1px solid var(--line); }
+html[data-form="sheet"] #phoneTools .pt-row { display:flex; gap:8px; }
+html[data-form="sheet"] #phoneTools .pt-row button { flex:1 1 0; min-height:44px; justify-content:center; gap:8px; }
+html[data-form="sheet"] #phoneTools .pt-row .bl { display:inline; }
+html[data-form="sheet"] #menu #phoneTools .pt-time { padding:0; gap:0 10px; min-height:44px; flex-wrap:wrap; }
+html[data-form="sheet"] #menu #phoneTools #scrub { flex:1 1 auto; width:auto; min-width:0; height:44px; margin:0; }
+html[data-form="sheet"] #phoneTools #readout { display:block; flex:1 0 100%; font-size:12px; color:var(--muted); white-space:normal; overflow:visible; }
 
-/* ---------- form "column": on its side ---------- */
 html[data-form="column"] { --sh-l:calc(8px + var(--safe-l)); --sh-w:clamp(270px, 40vw, 360px); --sh-b:calc(var(--bar-h) + 14px + var(--safe-b)); --sh-h:calc(100dvh - var(--sh-b) - 98px - var(--safe-t)); }
 html[data-form="column"] #sheetTabs { top:calc(50px + var(--safe-t)); }
 html[data-form="column"] #bar { padding:4px 8px; }
@@ -153,9 +135,7 @@ html[data-form="column"] .stepbox { flex:0 1 190px; }
 html[data-form="column"] #menu { left:auto; width:min(340px, calc(100vw - 16px)); }
 html[data-form="column"] #guideHud { top:calc(4px + var(--safe-t)); }
 
-/* ================= the Data side ================= */
 html[data-form] #dataView { padding:calc(52px + var(--safe-t)) calc(8px + var(--safe-r)) calc(8px + var(--safe-b)) calc(8px + var(--safe-l)); gap:8px; height:100dvh; grid-template-columns:minmax(0, 1fr); overflow:hidden; }
-/* the nine stages: one row that scrolls sideways, the current stage kept in view by phone.js */
 html[data-form] #dvFlow { display:flex; grid-template-columns:none; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; gap:6px; padding-bottom:2px; scrollbar-width:none; }
 html[data-form] #dvFlow::-webkit-scrollbar { display:none; }
 html[data-form] #dvFlow li { flex:0 0 auto; scroll-snap-align:center; }
@@ -163,7 +143,6 @@ html[data-form] #dvFlow button { width:118px; min-height:44px; padding:5px 9px 6
 html[data-form] #dvFlow .u { display:none; }
 html[data-form] #dvMain { display:grid; grid-template-columns:minmax(0, 1fr); grid-template-rows:auto minmax(0, 1fr); gap:8px; overflow:hidden; }
 html[data-form] #dvStage { grid-template-columns:minmax(0, 1fr); grid-template-rows:auto auto auto auto; padding:6px 8px 8px; gap:6px; }
-/* viz-data2: the story in three short lines, the dot band with only its two live labels, then tabs, picture and head */
 html[data-form] #dvStory { display:block; }
 html[data-form] #dvStory .st { max-width:none; margin:0 0 3px; }
 html[data-form] #dvStory .st b { display:inline; margin-right:6px; font-size:11px; }
@@ -189,7 +168,6 @@ html[data-form] #dvTabs::-webkit-scrollbar { display:none; }
 html[data-form] #dvTabs button { min-height:44px; flex:0 0 auto; }
 html[data-form] #dvFig { height:max(24dvh, min(40dvh, 100dvh - 640px)); min-height:160px; }
 html[data-form] #dvFig svg text { font-size:13.5px; } html[data-form] #dvFig svg text.h { font-size:14px; } html[data-form] #dvFig svg text.s { font-size:13px; }
-/* the words: caption, rule and sources (moved here by phone.js), then the card, in one scrolling column */
 html[data-form] #dvText { display:block; overflow-y:auto; overscroll-behavior:contain; min-height:0; min-width:0; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px 14px; }
 html[data-form] #dvText #dvFoot { display:block; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--line); }
 html[data-form] #dvText #dvFoot > div + div { margin-top:10px; }
@@ -199,9 +177,6 @@ html[data-form] #dvCard p, html[data-form] #dvCard .one { font-size:14px; }
 html[data-form] #dvBar { width:100%; padding:6px 8px; }
 html[data-form] #dvBar .keys { display:none; }
 html[data-form] #dvBar .lbl2 { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-/* on its side: the stage strip shares the top line with the Data | Model tabs; the picture takes the whole left half down to the
-   bottom edge; the words and Back / Next are the right half. #dvMain steps aside (display:contents) so its two children and the
-   bar can be placed in one grid. */
 html[data-form="column"] #dataView { grid-template-columns:minmax(0, 1.2fr) minmax(0, 1fr); grid-template-rows:44px minmax(0, 1fr) auto; gap:6px 8px; padding-top:calc(4px + var(--safe-t)); }
 html[data-form="column"] #dvFlow { grid-column:1 / 3; margin-left:calc(var(--brand-w, 250px) + 6px); }
 html[data-form="column"] #dvMain { display:contents; }
@@ -218,7 +193,6 @@ html[data-form="column"] #dvHead .hl span { display:none; }
 html[data-form="column"] #dvText #dvStory { margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--line); }
 html[data-form="column"] #dvFlow .bar { display:none; }
 html[data-form="column"] #dvFlow button { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; column-gap:8px; width:auto; min-width:104px; min-height:44px; padding:3px 9px; }
-/* viz-data2: a short upright phone (under 780 px high): smaller head strip, picture and story, so the words keep their room */
 @media (max-height: 780px) {
   html[data-form="sheet"] #dvFig { height:150px; min-height:150px; }
   html[data-form="sheet"] #dvHead { height:60px; }
@@ -229,3 +203,13 @@ html[data-form="column"] #dvFlow button { display:flex; flex-direction:row; flex
   html[data-form="sheet"] #dvBandKey { display:none; }
   html[data-form="sheet"] #dvStage { gap:4px; padding:5px 8px 6px; }
 }
+
+#wearTouch[hidden] { display:none; }
+html.touch #wearHud p:has(#wearExit) { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+html.touch #wearTouch { display:inline-flex; gap:6px; margin-right:auto; }
+html.touch #wearTouch button { width:44px; min-height:44px; padding:0; justify-content:center; }
+html.touch #wearExit { min-height:44px; }
+
+html[data-form] #toStory { min-height:44px; padding:0 10px; margin-left:-10px; margin-right:4px; }
+html[data-form] { touch-action:manipulation; }
+html[data-form="sheet"] #phoneTools .pt-step { flex:none; width:44px; min-height:44px; padding:0; justify-content:center; }

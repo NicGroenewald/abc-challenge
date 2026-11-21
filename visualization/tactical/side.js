@@ -1,22 +1,6 @@
-// viz-data: the Data | Model switch.
-//
-// Contract (BRIEF.md):
-//   document.body.dataset.side is "model" (default) or "data"
-//   ?side=data opens on the Data side
-//   a "k8:side" CustomEvent fires on window on every change, with detail.side
-//
-// This file only owns the two tabs and the #dataView container. The Data side itself (dataview.js,
-// dataview.css and the generated data/pipeline/examples.js) is loaded the first time it is opened,
-// so the Model side pays nothing for it. Nothing here touches WebGL, so the Data side also works on a
-// machine where the 3D view cannot start.
 (() => {
   'use strict';
-  // 13 Nov 2026: the data is the story's own copy (data/pipeline/, final dataset moredata_final.h5, made by tools/make_data_final.py),
-  // not the parent's ../data/pipeline (the 1,600-player version, which other pages still read).
   const FILES = { css: 'dataview.css?r=fn1', data: 'data/pipeline/examples.js?r=s1', js: 'dataview.js?r=src1' };
-  // 21 Nov 2026 (Nic): the Data side is switched off for now, but kept in the repo. While false there is no Data | Model
-  // switch and ?side=data opens the Model side. To bring it back: set true, and restore the two links marked
-  // "DATA SIDE OFF" in index.html.
   const DATA_SIDE = false;
   const brand = document.getElementById('brand');
   if (!brand) return;
@@ -49,8 +33,6 @@
     '<button type="button" data-side="model" aria-pressed="true">Model</button>';
   if (DATA_SIDE) brand.insertBefore(tabs, brand.querySelector('span'));
 
-  // The way back to the scroll story, on both sides. A real link to the page without its query (the story). If the reader came
-  // here from the story in this tab, going back in history is used instead: the browser then restores where they were reading.
   const toStory = document.createElement('a');
   toStory.id = 'toStory';
   toStory.href = location.pathname;
@@ -58,7 +40,7 @@
   toStory.setAttribute('aria-label', 'Back to the story');
   toStory.addEventListener('click', e => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
-    let from = null; try { from = new URL(document.referrer); } catch { /* opened directly */ }
+    let from = null; try { from = new URL(document.referrer); } catch {  }
     if (from && from.origin === location.origin && from.pathname === location.pathname && !/[?&](explore=1|side=|lite=1|tier=)/.test(from.search) && history.length > 1) { e.preventDefault(); history.back(); }
   });
   brand.insertBefore(toStory, brand.firstChild);
@@ -102,8 +84,6 @@
     return loading;
   }
 
-  // While the Data side is open the Model side's controls sit underneath it. `inert` takes them out of
-  // the Tab order and away from screen readers; removing it gives them back.
   function setInert(on) {
     for (const el of document.body.children) {
       if (el === brand || el === view || el.tagName === 'SCRIPT' || el.tagName === 'STYLE') continue;
@@ -117,7 +97,6 @@
     side = next;
     document.body.dataset.side = side;
     for (const b of tabs.children) b.setAttribute('aria-pressed', String(b.dataset.side === side));
-    // If the keyboard focus is about to be hidden with its side, park it on the tab that is now active.
     const lost = document.activeElement && document.activeElement !== document.body && !brand.contains(document.activeElement);
     view.hidden = side !== 'data';
     setInert(side === 'data');
@@ -127,7 +106,7 @@
       if (side === 'data') url.searchParams.set('side', 'data');
       else url.searchParams.delete('side');
       history.replaceState(null, '', url);
-    } catch { /* file:// pages cannot rewrite the address: the switch still works */ }
+    } catch {  }
     if (side === 'data') load().then(() => window.K8DataView && window.K8DataView.show());
     else if (window.K8DataView) window.K8DataView.hide();
     window.dispatchEvent(new CustomEvent('k8:side', { detail: { side } }));
@@ -138,9 +117,6 @@
     if (b) set(b.dataset.side);
   });
 
-  // On the Data side the Model side's shortcuts (N, B, Space, 1-9, ...) must not fire. This listener runs
-  // in the capture phase on window, so it is first; it hands the key to the data view and stops it there.
-  // Tab, Enter and Space on a focused button still work: those are browser defaults, not listeners.
   window.addEventListener('keydown', e => {
     if (side !== 'data') return;
     e.stopPropagation();
