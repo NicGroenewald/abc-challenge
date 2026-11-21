@@ -146,6 +146,7 @@
       const row = tools.querySelector('.pt-row'), time = tools.querySelector('.pt-time');
       for (const el of MOVED) if (el.tagName === 'BUTTON') row.appendChild(el); else time.insertBefore(el, el.id === 'scrub' ? time.querySelector('.pt-step') : null);
     } else for (const el of MOVED) { const [par, next] = HOME.get(el); if (el.parentElement !== par) par.insertBefore(el, next && next.parentElement === par ? next : null); }
+    buttonHelp();
   }
 
   if (menu && keys) {
@@ -155,9 +156,13 @@
       '<dt>tap a name in the scene</dt><dd>open that part</dd><dt>double-tap a part</dt><dd>fly to it</dd>' +
       '<dt>tap or slide on a chart</dt><dd>pick a step</dd></dl><dl id="btnHelp"></dl>';
     keys.before(d);
-    const list = d.querySelector('#btnHelp');
+    buttonHelp();
+  }
+  function buttonHelp() {
+    const list = $('btnHelp'); if (!list) return;
+    list.replaceChildren();
     for (const id of ['play', 'guideBtn', 'call', 'all']) {
-      const b = $(id), svg = b && b.querySelector('svg'); if (!b || !b.dataset.tip) continue;
+      const b = $(id), svg = b && b.querySelector('svg'); if (!b || !b.dataset.tip || b.closest('#phoneTools')) continue;
       const dt = document.createElement('dt'), dd = document.createElement('dd');
       if (svg) { const c = svg.cloneNode(true); c.setAttribute('width', 16); c.setAttribute('height', 16); c.style.cssText = 'stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle'; dt.appendChild(c); }
       dd.textContent = b.dataset.tip.replace(' with W A S D and the mouse', ''); list.append(dt, dd);

@@ -7,7 +7,7 @@ import { makeGLTFLoader } from '../hero_model.js';
 import { applyBoardTextures } from './board_textures.js';
 import { DIE, NPU_N, NPU_K8, npuTile, dieTexture } from './die_texture.js';
 const BOARD_URL = new URL('../assets/board_q3.glb?r=b7', import.meta.url).href;
-import { makeA, makeB } from './modelviews.js?r=ph1';
+import { makeA, makeB } from './modelviews.js?r=ph4';
 
 const MODEL = (new URLSearchParams(location.search).get('model') || 'a').toLowerCase();
 
@@ -430,7 +430,7 @@ function buildDie() {
         facts: [['K8 PARAMETERS', '7,555']] },
       { id: 'npu', label: 'HEXAGON NPU · K8\n44 KB · EVERY 10 MS', anchor: at(...k8c), normal: up, zoom: 3.2, dive: 'model', title: 'Neural processing unit (Hexagon)',
         text: 'A grid of multiply-add tiles built for small neural networks. One tile is plenty for k8. Go into the yellow tile to see the model run.',
-        facts: [['ONE CALL', '≈78 µS, MEASURED ON A PC CPU'], ['CALLS', 'EVERY 10 MS']] },
+        facts: [['ONE CALL', '≈78 MICROSECONDS, MEASURED ON A PC CPU'], ['CALLS', 'EVERY 10 MS']] },
     ],
     approach(h) { const p = h.anchor.getWorldPosition(new THREE.Vector3()); return pose(p, homeDir.clone().lerp(up, .5), h.zoom * fitScale()); },
     exitPose(h) { const p = h.anchor.getWorldPosition(new THREE.Vector3()); return pose(p, new THREE.Vector3(.02, 1, .03), .12); },
